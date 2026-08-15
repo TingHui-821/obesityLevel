@@ -81,16 +81,20 @@ FEATURE_ORDER = [
     "MTRANS_Bike", "MTRANS_Motorbike", "MTRANS_Public_Transportation", "MTRANS_Walking",
 ]
 
-# Best-guess label order (alphabetical LabelEncoder order — the most common
-# default). VERIFY this against your training notebook's label encoder.
+# Label order — MUST match the target_order used when NObeyesdad was
+# encoded during training (from data_cleaning.py: severity order, NOT
+# alphabetical). Using the wrong order here doesn't crash anything, it
+# just silently mislabels the model's output (e.g. showing "Obesity Type
+# III" when the model actually predicted "Obesity Type I"), which is what
+# was causing the wildly inconsistent-looking predictions across models.
 LABEL_MAP = {
     0: "Insufficient_Weight",
     1: "Normal_Weight",
-    2: "Obesity_Type_I",
-    3: "Obesity_Type_II",
-    4: "Obesity_Type_III",
-    5: "Overweight_Level_I",
-    6: "Overweight_Level_II",
+    2: "Overweight_Level_I",
+    3: "Overweight_Level_II",
+    4: "Obesity_Type_I",
+    5: "Obesity_Type_II",
+    6: "Obesity_Type_III",
 }
 
 LABEL_COLORS = {
