@@ -1,27 +1,3 @@
-"""
-Obesity Level Prediction App
------------------------------
-Streamlit app that loads 4 pre-trained models (Random Forest, KNN, SVM, ANN)
-and predicts an obesity category from lifestyle / physical inputs.
-
-IMPORTANT — read this before trusting the predictions:
-The training CSVs you provided (Cleaned_Obesity_Train.csv / Cleaned_Obesity_Test.csv)
-were ALREADY preprocessed: numeric columns are min-max scaled to [0, 1] and
-categorical columns are already label/one-hot encoded. No scaler.pkl or
-encoder.pkl was uploaded alongside the models, so this app has to guess how
-raw human-readable inputs (e.g. "Age = 25", "Gender = Male") map back to
-those encoded values.
-
-The mappings below (RAW_MIN_MAX, ENCODINGS, LABEL_MAP) are my best
-reconstruction based on the classic UCI/Kaggle "Obesity Levels" dataset,
-which this data clearly derives from. If your original notebook used
-different encoding choices (e.g. a different LabelEncoder class order, or
-different scaler bounds), predictions will be WRONG even though the app
-runs fine. Everything you'd need to change lives in the CONFIG block below —
-open your training notebook, compare it against these dictionaries, and
-edit them to match if needed.
-"""
-
 import streamlit as st
 import numpy as np
 import pandas as pd
