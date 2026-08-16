@@ -225,7 +225,11 @@ def render_comparison_charts(df: pd.DataFrame):
     tabs = st.tabs([m.replace("_", " ") for m in metric_cols])
     for tab, metric in zip(tabs, metric_cols):
         with tab:
-            st.altair_chart(bar_chart_for(metric), use_container_width=True)
+            st.altair_chart(
+                bar_chart_for(metric),
+                use_container_width=True,
+                key=f"cmp_chart_{metric}",
+            )
 
     with st.expander("Show all metrics side-by-side (grouped)"):
         melted = df.melt(id_vars="Model", value_vars=metric_cols,
@@ -242,7 +246,7 @@ def render_comparison_charts(df: pd.DataFrame):
             )
             .properties(height=280, width=120)
         )
-        st.altair_chart(grouped, use_container_width=False)
+        st.altair_chart(grouped, use_container_width=False, key="cmp_chart_grouped")
 
 
 st.subheader("📊 Model comparison (test set)")
