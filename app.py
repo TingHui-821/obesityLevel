@@ -210,35 +210,23 @@ def render_comparison_charts(df: pd.DataFrame):
     )
 
     def bar_chart_for(metric: str):
-        # Zoom the y-axis to where the actual differences are, instead of a
-        # fixed 0-100 scale — otherwise metrics that are all clustered close
-        # together (e.g. 86%, 87%, 86%, 98%) produce bars that look almost
-        # identical across tabs even though the underlying values differ.
-        col_min = float(df[metric].min())
-        col_max = float(df[metric].max())
-        pad = max((col_max - col_min) * 0.4, 2)
-        y_domain = [max(0, col_min - pad - 5), min(100, col_max + pad)]
-
-        bars = (
+        # scale(zero=False) lets Vega-Lite auto-zoom the y-axis to the
+        # data's natural range instead of forcing it to start at 0 —
+        # otherwise metrics clustered close together (e.g. 86%, 87%, 86%,
+        # 98%) produce bars that look nearly identical across tabs even
+        # though the underlying values differ. This uses Altair's built-in
+        # auto-scaling rather than manually computed domain bounds.
+        return (
             alt.Chart(df)
             .mark_bar()
             .encode(
                 x=alt.X("Model:N", sort=None, title=None),
-                y=alt.Y(f"{metric}:Q", title="%", scale=alt.Scale(domain=y_domain)),
+                y=alt.Y(f"{metric}:Q", title="%", scale=alt.Scale(zero=False)),
                 color=alt.Color("Model:N", scale=color_scale, legend=None),
                 tooltip=["Model", alt.Tooltip(f"{metric}:Q", format=".2f")],
             )
+            .properties(height=320)
         )
-        labels = (
-            alt.Chart(df)
-            .mark_text(dy=-8, fontSize=12, fontWeight="bold")
-            .encode(
-                x=alt.X("Model:N", sort=None),
-                y=alt.Y(f"{metric}:Q", scale=alt.Scale(domain=y_domain)),
-                text=alt.Text(f"{metric}:Q", format=".2f"),
-            )
-        )
-        return (bars + labels).properties(height=320)
 
     tabs = st.tabs([m.replace("_", " ") for m in metric_cols])
     for tab, metric in zip(tabs, metric_cols):
