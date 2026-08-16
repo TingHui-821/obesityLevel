@@ -202,14 +202,15 @@ def render_comparison_charts(df: pd.DataFrame):
         st.bar_chart(chart_df[metric_cols], y_label="%")
 
 
-with st.expander("📊 Model comparison charts (accuracy, precision, recall, F1, ROC AUC)", expanded=False):
-    st.caption(
-        "All metrics computed once on the held-out test set (not from any "
-        "single prediction above). This is the basis for choosing which "
-        "model performs best overall — see 'Model performance (test set)' "
-        "table in the sidebar for the exact numbers."
-    )
-    render_comparison_charts(load_comparison())
+st.subheader("📊 Model comparison (test set)")
+st.caption(
+    "All metrics computed once on the held-out test set (not from any "
+    "single prediction below). This is the basis for choosing which "
+    "model performs best overall."
+)
+render_comparison_charts(load_comparison())
+
+st.divider()
 
 
 rf_model, knn_model, svm_model, ann_model = load_models()
