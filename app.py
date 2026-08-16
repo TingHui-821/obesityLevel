@@ -27,7 +27,6 @@ import numpy as np
 import pandas as pd
 import joblib
 import keras
-import math
 
 # ----------------------------------------------------------------------
 # CONFIG — edit this block if your original preprocessing differs
@@ -182,41 +181,25 @@ with st.expander("⚠️ About the accuracy of this app's inputs (read once)"):
 def render_comparison_charts(df: pd.DataFrame):
     """Bar charts comparing all models across every metric in model_comparison.csv.
 
-    Expects df with a 'Model' column plus one or more numeric metric columns
-    (e.g. Accuracy, Precision_Macro, Recall_Macro, F1_Macro, ROC_AUC_Macro),
-    values already in percent (0-100) as produced by model_comparison.py.
+    Uses st.bar_chart (same native chart component as the prediction
+    probability bars below) so the whole app has one consistent,
+    interactive chart style — hover tooltips, download/fullscreen/table
+    icons — instead of mixing in static matplotlib images.
+
+    Expects df with a 'Model' column plus one or more numeric metric
+    columns (e.g. Accuracy, Precision_Macro, Recall_Macro, F1_Macro,
+    ROC_AUC_Macro), values already in percent (0-100).
     """
-    import matplotlib.pyplot as plt
-
     metric_cols = [c for c in df.columns if c != "Model"]
-    bar_colors = ["#EF4444", "#22C55E", "#3B82F6", "#EAB308", "#A855F7"]
+    chart_df = df.set_index("Model")
 
-    n = len(metric_cols)
-    ncols = 2
-    nrows = math.ceil(n / ncols)
-    fig, axes = plt.subplots(nrows, ncols, figsize=(12, 4.2 * nrows))
-    axes = np.array(axes).reshape(-1)  # flatten regardless of shape
+    tabs = st.tabs([m.replace("_", " ") for m in metric_cols])
+    for tab, metric in zip(tabs, metric_cols):
+        with tab:
+            st.bar_chart(chart_df[[metric]], y_label="%")
 
-    for i, metric in enumerate(metric_cols):
-        ax = axes[i]
-        ax.bar(df["Model"], df[metric], color=bar_colors[: len(df)])
-        ax.set_title(metric.replace("_", " "), fontsize=12, fontweight="bold")
-        ax.set_ylabel("%")
-        ax.set_ylim(0, 100)
-        ax.grid(axis="y", alpha=0.3)
-        for label in ax.get_xticklabels():
-            label.set_rotation(20)
-        # annotate bars with their value
-        for j, v in enumerate(df[metric]):
-            ax.text(j, v + 1.5, f"{v:.1f}", ha="center", fontsize=9)
-
-    # hide unused subplot slots if metric count is odd
-    for k in range(n, len(axes)):
-        axes[k].axis("off")
-
-    fig.suptitle("Model Comparison Across Metrics (Test Set)", fontsize=15, fontweight="bold")
-    plt.tight_layout()
-    st.pyplot(fig)
+    with st.expander("Show all metrics side-by-side (grouped)"):
+        st.bar_chart(chart_df[metric_cols], y_label="%")
 
 
 with st.expander("📊 Model comparison charts (accuracy, precision, recall, F1, ROC AUC)", expanded=False):
