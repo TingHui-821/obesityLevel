@@ -27,6 +27,7 @@ import numpy as np
 import pandas as pd
 import joblib
 import keras
+import math
 
 # ----------------------------------------------------------------------
 # CONFIG — edit this block if your original preprocessing differs
@@ -174,6 +175,60 @@ with st.expander("⚠️ About the accuracy of this app's inputs (read once)"):
         "`CONFIG` block at the top of `app.py` to match."
     )
 
+# ----------------------------------------------------------------------
+# Model comparison charts (accuracy, precision, recall, F1, ROC AUC)
+# ----------------------------------------------------------------------
+
+def render_comparison_charts(df: pd.DataFrame):
+    """Bar charts comparing all models across every metric in model_comparison.csv.
+
+    Expects df with a 'Model' column plus one or more numeric metric columns
+    (e.g. Accuracy, Precision_Macro, Recall_Macro, F1_Macro, ROC_AUC_Macro),
+    values already in percent (0-100) as produced by model_comparison.py.
+    """
+    import matplotlib.pyplot as plt
+
+    metric_cols = [c for c in df.columns if c != "Model"]
+    bar_colors = ["#EF4444", "#22C55E", "#3B82F6", "#EAB308", "#A855F7"]
+
+    n = len(metric_cols)
+    ncols = 2
+    nrows = math.ceil(n / ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(12, 4.2 * nrows))
+    axes = np.array(axes).reshape(-1)  # flatten regardless of shape
+
+    for i, metric in enumerate(metric_cols):
+        ax = axes[i]
+        ax.bar(df["Model"], df[metric], color=bar_colors[: len(df)])
+        ax.set_title(metric.replace("_", " "), fontsize=12, fontweight="bold")
+        ax.set_ylabel("%")
+        ax.set_ylim(0, 100)
+        ax.grid(axis="y", alpha=0.3)
+        for label in ax.get_xticklabels():
+            label.set_rotation(20)
+        # annotate bars with their value
+        for j, v in enumerate(df[metric]):
+            ax.text(j, v + 1.5, f"{v:.1f}", ha="center", fontsize=9)
+
+    # hide unused subplot slots if metric count is odd
+    for k in range(n, len(axes)):
+        axes[k].axis("off")
+
+    fig.suptitle("Model Comparison Across Metrics (Test Set)", fontsize=15, fontweight="bold")
+    plt.tight_layout()
+    st.pyplot(fig)
+
+
+with st.expander("📊 Model comparison charts (accuracy, precision, recall, F1, ROC AUC)", expanded=False):
+    st.caption(
+        "All metrics computed once on the held-out test set (not from any "
+        "single prediction above). This is the basis for choosing which "
+        "model performs best overall — see 'Model performance (test set)' "
+        "table in the sidebar for the exact numbers."
+    )
+    render_comparison_charts(load_comparison())
+
+
 rf_model, knn_model, svm_model, ann_model = load_models()
 comparison_df = load_comparison()
 
@@ -258,9 +313,11 @@ if st.button("🔍 Predict obesity level", type="primary", use_container_width=T
         )
     st.caption(
         "This is a direct BMI formula result, not a model prediction. "
-        "Compare it to the behavioural prediction below — they answer "
-        "different questions: this is 'what BMI category are you in right "
-        "now', the model below is 'what does your lifestyle suggest'."
+        "Compare it to the estimate below — they answer different "
+        "questions: this is 'what BMI category are you in right now', "
+        "the model below is 'what obesity category does your current "
+        "lifestyle pattern-match to' (both describe your PRESENT state, "
+        "not a future forecast)."
     )
     st.divider()
 
@@ -296,7 +353,14 @@ if st.button("🔍 Predict obesity level", type="primary", use_container_width=T
         }).sort_values("Probability", ascending=False)
         st.bar_chart(proba_df.set_index("Category"))
 
-    st.subheader("🧠 Behavioural risk prediction (from your lifestyle habits)")
+    st.subheader("🧠 Predicted current obesity category (from your habits)")
+    st.caption(
+        "This is the model's estimate of which obesity category best "
+        "matches your CURRENT lifestyle habits — it is not a future "
+        "forecast or a risk score. It can differ from your BMI category "
+        "above because it's inferred indirectly from behaviour patterns, "
+        "not calculated from your actual height/weight."
+    )
 
     if model_choice == "Compare all 4":
         tabs = st.tabs(["Random Forest", "SVM", "KNN", "ANN"])
