@@ -178,28 +178,71 @@ with st.expander("⚠️ About the accuracy of this app's inputs (read once)"):
 # Model comparison charts (accuracy, precision, recall, F1, ROC AUC)
 # ----------------------------------------------------------------------
 
+import altair as alt
+
+# Fixed color per model, kept consistent across every metric tab so the
+# same model always shows the same color throughout the app.
+MODEL_COLORS = {
+    "Random Forest": "#EF4444",
+    "SVM": "#3B82F6",
+    "KNN": "#22C55E",
+    "ANN": "#A855F7",
+}
+
+
 def render_comparison_charts(df: pd.DataFrame):
     """Bar charts comparing all models across every metric in model_comparison.csv.
 
-    Uses st.bar_chart (same native chart component as the prediction
-    probability bars below) so the whole app has one consistent,
-    interactive chart style — hover tooltips, download/fullscreen/table
-    icons — instead of mixing in static matplotlib images.
+    Uses Altair (bundled with Streamlit, no extra dependency) instead of
+    st.bar_chart so each model's bar can have its own distinct, consistent
+    color — st.bar_chart only colors by column/series, not by category,
+    so it can't do per-model colors on a single-metric chart.
 
     Expects df with a 'Model' column plus one or more numeric metric
     columns (e.g. Accuracy, Precision_Macro, Recall_Macro, F1_Macro,
     ROC_AUC_Macro), values already in percent (0-100).
     """
     metric_cols = [c for c in df.columns if c != "Model"]
-    chart_df = df.set_index("Model")
+    models_present = df["Model"].tolist()
+    color_scale = alt.Scale(
+        domain=models_present,
+        range=[MODEL_COLORS.get(m, "#94A3B8") for m in models_present],
+    )
+
+    def bar_chart_for(metric: str):
+        return (
+            alt.Chart(df)
+            .mark_bar()
+            .encode(
+                x=alt.X("Model:N", sort=None, title=None),
+                y=alt.Y(f"{metric}:Q", title="%", scale=alt.Scale(domain=[0, 100])),
+                color=alt.Color("Model:N", scale=color_scale, legend=None),
+                tooltip=["Model", alt.Tooltip(f"{metric}:Q", format=".2f")],
+            )
+            .properties(height=320)
+        )
 
     tabs = st.tabs([m.replace("_", " ") for m in metric_cols])
     for tab, metric in zip(tabs, metric_cols):
         with tab:
-            st.bar_chart(chart_df[[metric]], y_label="%")
+            st.altair_chart(bar_chart_for(metric), use_container_width=True)
 
     with st.expander("Show all metrics side-by-side (grouped)"):
-        st.bar_chart(chart_df[metric_cols], y_label="%")
+        melted = df.melt(id_vars="Model", value_vars=metric_cols,
+                          var_name="Metric", value_name="Value")
+        grouped = (
+            alt.Chart(melted)
+            .mark_bar()
+            .encode(
+                x=alt.X("Model:N", sort=None, title=None),
+                y=alt.Y("Value:Q", title="%", scale=alt.Scale(domain=[0, 100])),
+                color=alt.Color("Model:N", scale=color_scale, legend=alt.Legend(title="Model")),
+                column=alt.Column("Metric:N", title=None),
+                tooltip=["Model", "Metric", alt.Tooltip("Value:Q", format=".2f")],
+            )
+            .properties(height=280, width=120)
+        )
+        st.altair_chart(grouped, use_container_width=False)
 
 
 st.subheader("📊 Model comparison (test set)")
