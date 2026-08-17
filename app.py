@@ -393,22 +393,43 @@ if st.button("🔍 Predict obesity level", type="primary", use_container_width=T
         raise ValueError(model_name)
 
     def show_result(model_name, proba):
-        pred_idx = int(np.argmax(proba))
-        pred_label = LABEL_MAP[pred_idx]
-        confidence = float(proba[pred_idx]) * 100
-        color = LABEL_COLORS.get(pred_label, "#666")
+    pred_idx = int(np.argmax(proba))
+    pred_label = LABEL_MAP[pred_idx]
+    confidence = float(proba[pred_idx]) * 100
+    color = LABEL_COLORS.get(pred_label, "#666")
 
-        st.markdown(
-            f"### {model_name} prediction: "
-            f"<span style='color:{color}'>{pred_label.replace('_',' ')}</span> "
-            f"({confidence:.1f}% confidence)",
-            unsafe_allow_html=True,
+    st.markdown(
+        f"### {model_name} prediction: "
+        f"<span style='color:{color}'>{pred_label.replace('_',' ')}</span> "
+        f"({confidence:.1f}% confidence)",
+        unsafe_allow_html=True,
+    )
+
+    # 1. Create the DataFrame in the specific order of LABEL_MAP
+    categories = [LABEL_MAP[i].replace("_", " ") for i in range(len(proba))]
+    colors = [LABEL_COLORS[LABEL_MAP[i]] for i in range(len(proba))]
+    
+    proba_df = pd.DataFrame({
+        "Category": categories,
+        "Probability": proba,
+        "Color": colors
+    })
+
+    # 2. Use Altair for the chart to force the categorical order and use custom colors
+    # This prevents Streamlit from auto-sorting alphabetically.
+    chart = (
+        alt.Chart(proba_df)
+        .mark_bar()
+        .encode(
+            x=alt.X("Category:N", sort=categories, title="Obesity Level"),
+            y=alt.Y("Probability:Q", title="Probability", scale=alt.Scale(domain=[0, 1])),
+            color=alt.Color("Color:N", scale=None), # Uses the hex codes in the Color column
+            tooltip=["Category", alt.Tooltip("Probability", format=".2%")]
         )
-        proba_df = pd.DataFrame({
-            "Category": [LABEL_MAP[i].replace("_", " ") for i in range(len(proba))],
-            "Probability": proba,
-        }).sort_values("Probability", ascending=False)
-        st.bar_chart(proba_df.set_index("Category"))
+        .properties(height=350)
+    )
+    
+    st.altair_chart(chart, use_container_width=True)
 
     st.subheader("🧠 Predicted current obesity category (from your habits)")
     st.caption(
