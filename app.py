@@ -106,6 +106,34 @@ def scale(value, key):
     return (value - lo) / (hi - lo)
 
 
+def get_real_scaler(knn_model):
+    """No scaler.pkl was saved alongside the models, but obesity_knn_model.joblib
+    is a CalibratedClassifierCV wrapping Pipeline(StandardScaler -> KNeighborsClassifier),
+    so its fitted StandardScaler carries the real training-time mean/variance.
+
+    VERIFIED (by inspecting the saved model files, not by assumption):
+    - SVM's svm.support_vectors_ are centered ~0 with a spread of roughly -2 to +20
+      (the +20 tail comes from rare one-hot columns like MTRANS_Bike) -> SVM was
+      trained on this standardized representation, NOT the 0-1 min-max/raw encoding
+      build_feature_vector() produces. SVM needs this scaler applied before predict.
+    - Random Forest's tree split thresholds (rf.estimators_[i].tree_.threshold) all
+      fall in the 0-1 / ordinal range build_feature_vector() already produces
+      (e.g. binary features split at exactly 0.5) -> RF was trained on the RAW
+      min-max/ordinal encoding, not the standardized one. Do NOT apply this scaler
+      to RF's input, or you'll feed it a numeric range it never saw during training.
+    - KNN's own pipeline standardizes internally, so keep feeding it the raw
+      min-max/ordinal vector (build_feature_vector() output) - do not double-scale.
+    - ANN has no Normalization layer baked in and no training notebook was included
+      in this repo, so its true training-time scale could NOT be verified the same
+      way. Empirically (across a spread of test profiles), applying this scaler
+      made ANN agree with the KNN/SVM majority more often than feeding it raw
+      values, so it's used as the default below - but this is inferred, not proven.
+      If you still have your training notebook, check what ANN was actually fed
+      and update this if needed.
+    """
+    return knn_model.calibrated_classifiers_[0].estimator.named_steps["scaler"]
+
+
 def build_feature_vector(inputs: dict) -> pd.DataFrame:
     row = {
         "Gender": ENCODINGS["Gender"][inputs["Gender"]],
@@ -248,6 +276,7 @@ st.divider()
 
 rf_model, knn_model, svm_model, ann_model = load_models()
 comparison_df = load_comparison()
+real_scaler = get_real_scaler(knn_model)
 
 st.sidebar.header("Model selection")
 model_choice = st.sidebar.radio(
@@ -342,14 +371,25 @@ if st.button("🔍 Predict obesity level", type="primary", use_container_width=T
     X_values = X.values.astype(float)
 
     def predict_proba(model_name):
+        # RF: verified (via tree split thresholds) trained on the raw
+        # min-max/ordinal vector below - keep as-is, do NOT standardize.
         if model_name == "Random Forest":
             return rf_model.predict_proba(X_values)[0]
-        if model_name == "SVM":
-            return svm_model.predict_proba(X_values)[0]
+        # KNN: standardizes internally via its own embedded pipeline -
+        # keep feeding it the raw vector, do not double-scale.
         if model_name == "KNN":
             return knn_model.predict_proba(X_values)[0]
+        # SVM: verified (via support_vectors_ stats) trained on standardized
+        # features - apply the recovered scaler before predicting.
+        if model_name == "SVM":
+            X_std = real_scaler.transform(X_values)
+            return svm_model.predict_proba(X_std)[0]
+        # ANN: true training-time scale unverifiable without the original
+        # notebook - standardized version empirically agreed with the
+        # KNN/SVM majority more often in testing, used as current default.
         if model_name == "ANN":
-            return ann_model.predict(X_values, verbose=0)[0]
+            X_std = real_scaler.transform(X_values)
+            return ann_model.predict(X_std, verbose=0)[0]
         raise ValueError(model_name)
 
     def show_result(model_name, proba):
