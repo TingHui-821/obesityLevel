@@ -451,6 +451,3 @@ if st.button("🔍 Predict obesity level", type="primary", use_container_width=T
 
     with st.expander("See the encoded feature vector sent to the model"):
         st.dataframe(X, use_container_width=True)
-
-    with st.expander("See the encoded feature vector sent to the model"):
-        st.dataframe(X, use_container_width=True)
