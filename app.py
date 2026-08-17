@@ -393,44 +393,45 @@ if st.button("🔍 Predict obesity level", type="primary", use_container_width=T
         raise ValueError(model_name)
 
     def show_result(model_name, proba):
-    pred_idx = int(np.argmax(proba))
-    pred_label = LABEL_MAP[pred_idx]
-    confidence = float(proba[pred_idx]) * 100
-    color = LABEL_COLORS.get(pred_label, "#666")
+        # Indented correctly inside the function
+        pred_idx = int(np.argmax(proba))
+        pred_label = LABEL_MAP[pred_idx]
+        confidence = float(proba[pred_idx]) * 100
+        color = LABEL_COLORS.get(pred_label, "#666")
 
-    st.markdown(
-        f"### {model_name} prediction: "
-        f"<span style='color:{color}'>{pred_label.replace('_',' ')}</span> "
-        f"({confidence:.1f}% confidence)",
-        unsafe_allow_html=True,
-    )
-
-    # 1. Create the DataFrame in the specific order of LABEL_MAP
-    categories = [LABEL_MAP[i].replace("_", " ") for i in range(len(proba))]
-    colors = [LABEL_COLORS[LABEL_MAP[i]] for i in range(len(proba))]
-    
-    proba_df = pd.DataFrame({
-        "Category": categories,
-        "Probability": proba,
-        "Color": colors
-    })
-
-    # 2. Use Altair for the chart to force the categorical order and use custom colors
-    # This prevents Streamlit from auto-sorting alphabetically.
-    chart = (
-        alt.Chart(proba_df)
-        .mark_bar()
-        .encode(
-            x=alt.X("Category:N", sort=categories, title="Obesity Level"),
-            y=alt.Y("Probability:Q", title="Probability", scale=alt.Scale(domain=[0, 1])),
-            color=alt.Color("Color:N", scale=None), # Uses the hex codes in the Color column
-            tooltip=["Category", alt.Tooltip("Probability", format=".2%")]
+        st.markdown(
+            f"### {model_name} prediction: "
+            f"<span style='color:{color}'>{pred_label.replace('_',' ')}</span> "
+            f"({confidence:.1f}% confidence)",
+            unsafe_allow_html=True,
         )
-        .properties(height=350)
-    )
-    
-    st.altair_chart(chart, use_container_width=True)
 
+        # 1. Create the DataFrame in the specific order of LABEL_MAP
+        categories = [LABEL_MAP[i].replace("_", " ") for i in range(len(proba))]
+        colors = [LABEL_COLORS[LABEL_MAP[i]] for i in range(len(proba))]
+        
+        proba_df = pd.DataFrame({
+            "Category": categories,
+            "Probability": proba,
+            "Color": colors
+        })
+
+        # 2. Use Altair for the chart to force the categorical order and use custom colors
+        chart = (
+            alt.Chart(proba_df)
+            .mark_bar()
+            .encode(
+                x=alt.X("Category:N", sort=categories, title="Obesity Level"),
+                y=alt.Y("Probability:Q", title="Probability", scale=alt.Scale(domain=[0, 1])),
+                color=alt.Color("Color:N", scale=None), 
+                tooltip=["Category", alt.Tooltip("Probability", format=".2%")]
+            )
+            .properties(height=350)
+        )
+        
+        st.altair_chart(chart, use_container_width=True)
+
+    # These lines are now back at the 'if st.button' level
     st.subheader("🧠 Predicted current obesity category (from your habits)")
     st.caption(
         "This is the model's estimate of which obesity category best "
@@ -447,6 +448,9 @@ if st.button("🔍 Predict obesity level", type="primary", use_container_width=T
                 show_result(name, predict_proba(name))
     else:
         show_result(model_choice, predict_proba(model_choice))
+
+    with st.expander("See the encoded feature vector sent to the model"):
+        st.dataframe(X, use_container_width=True)
 
     with st.expander("See the encoded feature vector sent to the model"):
         st.dataframe(X, use_container_width=True)
