@@ -249,10 +249,14 @@ def render_comparison_charts(df: pd.DataFrame):
     with st.expander("Show all metrics side-by-side (grouped)"):
         melted = df.melt(id_vars="Model", value_vars=metric_cols,
                           var_name="Metric", value_name="Value")
+        # NOTE: `column`/`row` facet encodings must be applied to the
+        # already-layered chart, not baked into a shared base that gets
+        # layered — putting it in the base and then doing bars + labels
+        # produces an invalid spec (SchemaValidationError). Layer first,
+        # facet second.
         base = alt.Chart(melted).encode(
             x=alt.X("Model:N", sort=None, title=None),
             y=alt.Y("Value:Q", title="%", scale=alt.Scale(domain=[0, 100])),
-            column=alt.Column("Metric:N", title=None),
         )
         bars = base.mark_bar().encode(
             color=alt.Color("Model:N", scale=color_scale, legend=alt.Legend(title="Model")),
@@ -263,7 +267,8 @@ def render_comparison_charts(df: pd.DataFrame):
         ).encode(
             text=alt.Text("Value:Q", format=".1f"),
         )
-        grouped = (bars + labels).properties(height=280, width=120)
+        layered = alt.layer(bars, labels).properties(height=280, width=120)
+        grouped = layered.facet(column=alt.Column("Metric:N", title=None))
         st.altair_chart(grouped, use_container_width=False, key="cmp_chart_grouped")
 
 
