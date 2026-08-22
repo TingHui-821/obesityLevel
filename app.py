@@ -3,6 +3,16 @@ import numpy as np
 import pandas as pd
 import joblib
 import keras
+
+# ----------------------------------------------------------------------
+# CONFIG — edit this block if your original preprocessing differs
+# ----------------------------------------------------------------------
+
+# NOTE: numeric scaling no longer uses guessed min/max values. The real
+# fitted MinMaxScaler (obesity_scaler.joblib) is loaded further down and
+# used directly, so this file no longer needs to know or guess the
+# training-set ranges at all — see scale_numeric_inputs().
+
 # Binary / ordinal encodings assumed during training
 ENCODINGS = {
     "Gender": {"Female": 0, "Male": 1},
@@ -17,7 +27,14 @@ ENCODINGS = {
 MTRANS_OPTIONS = ["Automobile", "Bike", "Motorbike", "Public_Transportation", "Walking"]
 # "Automobile" was dropped as the one-hot baseline (all MTRANS_* columns = 0)
 
-
+# NOTE: Height and Weight are deliberately NOT in FEATURE_ORDER and never
+# reach the trained models. NObeyesdad (the target) is essentially a
+# bucketed version of BMI = Weight / Height^2, so feeding Height/Weight (or
+# BMI) into the model would leak the answer straight to it and inflate
+# accuracy without the model learning anything about behaviour. They're
+# collected below ONLY to show a simple, direct BMI calculation next to
+# the model's behavioural prediction — two independent numbers, not one
+# feeding the other.
 def bmi_to_label(bmi: float) -> str:
     if bmi < 18.5: return "Insufficient_Weight"
     elif bmi < 25: return "Normal_Weight"
@@ -33,6 +50,12 @@ FEATURE_ORDER = [
     "MTRANS_Bike", "MTRANS_Motorbike", "MTRANS_Public_Transportation", "MTRANS_Walking",
 ]
 
+# Label order — MUST match the target_order used when NObeyesdad was
+# encoded during training (from data_cleaning.py: severity order, NOT
+# alphabetical). Using the wrong order here doesn't crash anything, it
+# just silently mislabels the model's output (e.g. showing "Obesity Type
+# III" when the model actually predicted "Obesity Type I"), which is what
+# was causing the wildly inconsistent-looking predictions across models.
 LABEL_MAP = {
     0: "Insufficient_Weight",
     1: "Normal_Weight",
@@ -181,55 +204,41 @@ def render_comparison_charts(df: pd.DataFrame):
     )
 
     def bar_chart_for(metric: str):
-        # zero=False auto-zooms the y-axis to the data's natural range
-        # instead of forcing it to start at 0 — otherwise metrics
-        # clustered close together (e.g. 86%, 87%, 86%, 98%) produce bars
-        # that look nearly identical across tabs even though the
-        # underlying values differ. On top of that, we manually pad the
-        # domain's upper bound so the value label has clear space to sit
-        # above the tallest bar instead of being clipped by the plot edge
-        # (which is what was happening before — the label was there, just
-        # squeezed against the top axis line).
-        y_min = df[metric].min()
-        y_max = df[metric].max()
-        span = max(y_max - y_min, 1e-6)
-        domain_min = y_min - span * 0.15
-        domain_max = y_max + span * 0.25
-
+        # zero=False lets Vega-Lite auto-zoom the y-axis to the data's
+        # natural range instead of forcing it to start at 0 — otherwise
+        # metrics clustered close together (e.g. 86%, 87%, 86%, 98%)
+        # produce bars that look nearly identical across tabs even though
+        # the underlying values differ.
+        #
+        # NOTE: an earlier version of this also set an explicit `domain`
+        # on the scale to force extra headroom above the tallest bar for
+        # the value label. That rendered fine in offline testing but
+        # blanked the *actual* chart in this app's Streamlit/Vega-Lite
+        # runtime (bars and all) — so it's deliberately avoided now.
+        # zero=False alone is the same config the chart used back when
+        # bars were rendering correctly; headroom for the label is added
+        # below via chart-level padding + clip=False instead, which
+        # doesn't touch the data scale at all.
         base = alt.Chart(df).encode(
             x=alt.X("Model:N", sort=None, title=None),
-            y=alt.Y(
-                f"{metric}:Q",
-                title="%",
-                # zero=False must be kept alongside the custom domain —
-                # without it Vega-Lite tries to force a 0 baseline into
-                # the scale, which falls outside [domain_min, domain_max]
-                # and makes the bars render off-scale / invisible.
-                scale=alt.Scale(domain=[domain_min, domain_max], zero=False),
-            ),
+            y=alt.Y(f"{metric}:Q", title="%", scale=alt.Scale(zero=False)),
         )
 
-        bars = base.mark_bar().encode(
+        bars = base.mark_bar(clip=False).encode(
             color=alt.Color("Model:N", scale=color_scale, legend=None),
             tooltip=["Model", alt.Tooltip(f"{metric}:Q", format=".2f")],
         )
 
-        # Value label above each bar's top edge. Drawn as two layers to
-        # create a halo effect (light stroke behind, dark fill on top) so
-        # it stays readable on both light and dark Streamlit themes,
-        # instead of hardcoding a single color that disappears on one of them.
-        # Single text layer with both a dark fill and a light stroke, so
-        # it stays readable on both light and dark Streamlit themes.
-        # (Previously this used two stacked layers with fill=None on one
-        # of them to fake an outline — that tripped up the Vega-Lite
-        # renderer actually used inside Streamlit and blanked the whole
-        # chart, even though it looked fine in an offline render test.
-        # A single mark with color+stroke together is much safer.)
+        # Value label above each bar's top edge. clip=False lets it draw
+        # into the padding area above the plot instead of being cut off
+        # by the axis boundary. Single mark with both a dark fill and a
+        # light stroke so it stays readable on light or dark themes.
         labels = base.mark_text(
+            clip=False,
             align="center",
             baseline="bottom",
-            dy=-10,
-            fontSize=15,
+            dy=-8,
+            fontSize=14,
             fontWeight="bold",
             color="#111111",
             stroke="white",
@@ -238,7 +247,10 @@ def render_comparison_charts(df: pd.DataFrame):
             text=alt.Text(f"{metric}:Q", format=".2f"),
         )
 
-        return (bars + labels).properties(height=320)
+        return (bars + labels).properties(
+            height=320,
+            padding={"top": 25, "left": 5, "right": 5, "bottom": 5},
+        )
 
     tabs = st.tabs([m.replace("_", " ") for m in metric_cols])
     for tab, metric in zip(tabs, metric_cols):
