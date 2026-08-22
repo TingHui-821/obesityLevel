@@ -224,7 +224,11 @@ def render_comparison_charts(df: pd.DataFrame):
             y=alt.Y(
                 f"{metric}:Q",
                 title="%",
-                scale=alt.Scale(domain=[domain_min, domain_max]),
+                # zero=False must be kept alongside the custom domain —
+                # without it Vega-Lite tries to force a 0 baseline into
+                # the scale, which falls outside [domain_min, domain_max]
+                # and makes the bars render off-scale / invisible.
+                scale=alt.Scale(domain=[domain_min, domain_max], zero=False),
             ),
         )
 
@@ -233,20 +237,27 @@ def render_comparison_charts(df: pd.DataFrame):
             tooltip=["Model", alt.Tooltip(f"{metric}:Q", format=".2f")],
         )
 
-        # Value label clearly above each bar's top edge, with room to
-        # breathe now that the y-domain has headroom baked in.
-        labels = base.mark_text(
+        # Value label above each bar's top edge. Drawn as two layers to
+        # create a halo effect (light stroke behind, dark fill on top) so
+        # it stays readable on both light and dark Streamlit themes,
+        # instead of hardcoding a single color that disappears on one of them.
+        label_encoding = dict(
             align="center",
             baseline="bottom",
             dy=-10,
             fontSize=15,
             fontWeight="bold",
-            color="white",
-        ).encode(
-            text=alt.Text(f"{metric}:Q", format=".2f"),
         )
+        # Halo layer: white outline behind the text, no fill.
+        label_halo = base.mark_text(
+            **label_encoding, stroke="white", strokeWidth=3, fill=None,
+        ).encode(text=alt.Text(f"{metric}:Q", format=".2f"))
+        # Fill layer: dark text drawn on top of the halo.
+        label_fill = base.mark_text(
+            **label_encoding, color="#111111",
+        ).encode(text=alt.Text(f"{metric}:Q", format=".2f"))
 
-        return (bars + labels).properties(height=320)
+        return (bars + label_halo + label_fill).properties(height=320)
 
     tabs = st.tabs([m.replace("_", " ") for m in metric_cols])
     for tab, metric in zip(tabs, metric_cols):
