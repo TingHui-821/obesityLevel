@@ -240,7 +240,7 @@ def render_comparison_charts(df: pd.DataFrame):
             dy=-8,
             fontSize=20,
             fontWeight="bold",
-            color="#FFFFFF",
+            color="#000000",
         ).encode(
             text=alt.Text(f"{metric}:Q", format=".2f"),
         )
@@ -467,7 +467,7 @@ if st.button("🔍 Predict obesity level", type="primary", use_container_width=T
             dy=-8,
             fontSize=20,
             fontWeight="bold",
-            color="#FFFFFF",
+            color="#000000",
         ).encode(
             text=alt.Text("Probability:Q", format=".1%"),
         )
