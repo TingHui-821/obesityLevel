@@ -8,17 +8,10 @@ import keras
 # CONFIG — edit this block if your original preprocessing differs
 # ----------------------------------------------------------------------
 
-# Min/max used to reproduce the training set's min-max scaling.
-# These are the standard ranges for the UCI Obesity dataset this data
-# is derived from. Adjust if your notebook used different bounds.
-RAW_MIN_MAX = {
-    "Age": (14, 61),
-    "FCVC": (1, 3),   # vegetable consumption frequency
-    "NCP": (1, 4),    # number of main meals
-    "CH2O": (1, 3),   # daily water intake (liters)
-    "FAF": (0, 3),    # physical activity frequency
-    "TUE": (0, 2),    # time using technology devices
-}
+# NOTE: numeric scaling no longer uses guessed min/max values. The real
+# fitted MinMaxScaler (obesity_scaler.joblib) is loaded further down and
+# used directly, so this file no longer needs to know or guess the
+# training-set ranges at all — see scale_numeric_inputs().
 
 # Binary / ordinal encodings assumed during training
 ENCODINGS = {
@@ -101,53 +94,51 @@ def load_comparison():
     return pd.read_csv("model_comparison.csv")
 
 
-def scale(value, key):
-    lo, hi = RAW_MIN_MAX[key]
-    return (value - lo) / (hi - lo)
-
-
-def get_real_scaler(knn_model):
-    """No scaler.pkl was saved alongside the models, but obesity_knn_model.joblib
-    is a CalibratedClassifierCV wrapping Pipeline(StandardScaler -> KNeighborsClassifier),
-    so its fitted StandardScaler carries the real training-time mean/variance.
-
-    VERIFIED (by inspecting the saved model files, not by assumption):
-    - SVM's svm.support_vectors_ are centered ~0 with a spread of roughly -2 to +20
-      (the +20 tail comes from rare one-hot columns like MTRANS_Bike) -> SVM was
-      trained on this standardized representation, NOT the 0-1 min-max/raw encoding
-      build_feature_vector() produces. SVM needs this scaler applied before predict.
-    - Random Forest's tree split thresholds (rf.estimators_[i].tree_.threshold) all
-      fall in the 0-1 / ordinal range build_feature_vector() already produces
-      (e.g. binary features split at exactly 0.5) -> RF was trained on the RAW
-      min-max/ordinal encoding, not the standardized one. Do NOT apply this scaler
-      to RF's input, or you'll feed it a numeric range it never saw during training.
-    - KNN's own pipeline standardizes internally, so keep feeding it the raw
-      min-max/ordinal vector (build_feature_vector() output) - do not double-scale.
-    - ANN has no Normalization layer baked in and no training notebook was included
-      in this repo, so its true training-time scale could NOT be verified the same
-      way. Empirically (across a spread of test profiles), applying this scaler
-      made ANN agree with the KNN/SVM majority more often than feeding it raw
-      values, so it's used as the default below - but this is inferred, not proven.
-      If you still have your training notebook, check what ANN was actually fed
-      and update this if needed.
+@st.cache_resource
+def load_scaler():
+    """The real MinMaxScaler fit on the training set during cleaning
+    (see: scaler.fit_transform(X_train[num_cols]) in the cleaning
+    notebook). Loading the actual fitted object instead of guessing
+    min/max bounds means this app can never drift out of sync with
+    what the models were actually trained on.
     """
-    return knn_model.calibrated_classifiers_[0].estimator.named_steps["scaler"]
+    scaler = joblib.load("obesity_scaler.joblib")
+    scaler_cols = joblib.load("obesity_scaler_columns.joblib")
+    return scaler, scaler_cols
 
 
-def build_feature_vector(inputs: dict) -> pd.DataFrame:
+def scale_numeric_inputs(inputs: dict, scaler, scaler_cols) -> dict:
+    """Scales the numeric fields using the real fitted scaler, in the
+    exact column order it was fit with, instead of a per-field guessed
+    (value - lo) / (hi - lo) formula."""
+    raw_row = pd.DataFrame([[inputs[c] for c in scaler_cols]], columns=scaler_cols)
+    scaled_row = scaler.transform(raw_row)[0]
+    return dict(zip(scaler_cols, scaled_row))
+
+
+@st.cache_resource
+def load_svm_scaler():
+    """The real StandardScaler the SVM notebook itself fit and saved
+    (svm_scaler.pkl) — no need to guess or reverse-engineer this one,
+    the training notebook exports it directly."""
+    return joblib.load("svm_scaler.pkl")
+
+
+def build_feature_vector(inputs: dict, scaler, scaler_cols) -> pd.DataFrame:
+    scaled_numeric = scale_numeric_inputs(inputs, scaler, scaler_cols)
     row = {
         "Gender": ENCODINGS["Gender"][inputs["Gender"]],
-        "Age": scale(inputs["Age"], "Age"),
+        "Age": scaled_numeric["Age"],
         "family_history_with_overweight": ENCODINGS["family_history_with_overweight"][inputs["family_history"]],
         "FAVC": ENCODINGS["FAVC"][inputs["FAVC"]],
-        "FCVC": scale(inputs["FCVC"], "FCVC"),
-        "NCP": scale(inputs["NCP"], "NCP"),
+        "FCVC": scaled_numeric["FCVC"],
+        "NCP": scaled_numeric["NCP"],
         "CAEC": ENCODINGS["CAEC"][inputs["CAEC"]],
         "SMOKE": ENCODINGS["SMOKE"][inputs["SMOKE"]],
-        "CH2O": scale(inputs["CH2O"], "CH2O"),
+        "CH2O": scaled_numeric["CH2O"],
         "SCC": ENCODINGS["SCC"][inputs["SCC"]],
-        "FAF": scale(inputs["FAF"], "FAF"),
-        "TUE": scale(inputs["TUE"], "TUE"),
+        "FAF": scaled_numeric["FAF"],
+        "TUE": scaled_numeric["TUE"],
         "CALC": ENCODINGS["CALC"][inputs["CALC"]],
         "MTRANS_Bike": inputs["MTRANS"] == "Bike",
         "MTRANS_Motorbike": inputs["MTRANS"] == "Motorbike",
@@ -169,13 +160,12 @@ st.caption(
     "using 4 trained models (Random Forest, KNN, SVM, ANN)."
 )
 
-with st.expander("⚠️ About the accuracy of this app's inputs (read once)"):
+with st.expander("ℹ️ About this app's inputs"):
     st.markdown(
-        "The uploaded training data was already scaled/encoded, and no scaler "
-        "or encoder file was provided with the models. This app reconstructs "
-        "that preprocessing using standard assumptions for the UCI Obesity "
-        "dataset. If your notebook encoded things differently, edit the "
-        "`CONFIG` block at the top of `app.py` to match."
+        "Numeric inputs (Age, FCVC, NCP, CH2O, FAF, TUE) are scaled using the "
+        "**actual fitted MinMaxScaler** from training (`obesity_scaler.joblib`), "
+        "not guessed ranges. Categorical/ordinal encodings in the `CONFIG` "
+        "block match the mappings used in the cleaning notebook directly."
     )
 
 # ----------------------------------------------------------------------
@@ -220,17 +210,28 @@ def render_comparison_charts(df: pd.DataFrame):
         # 98%) produce bars that look nearly identical across tabs even
         # though the underlying values differ. This uses Altair's built-in
         # auto-scaling rather than manually computed domain bounds.
-        return (
-            alt.Chart(df)
-            .mark_bar()
-            .encode(
-                x=alt.X("Model:N", sort=None, title=None),
-                y=alt.Y(f"{metric}:Q", title="%", scale=alt.Scale(zero=False)),
-                color=alt.Color("Model:N", scale=color_scale, legend=None),
-                tooltip=["Model", alt.Tooltip(f"{metric}:Q", format=".2f")],
-            )
-            .properties(height=320)
+        base = alt.Chart(df).encode(
+            x=alt.X("Model:N", sort=None, title=None),
+            y=alt.Y(f"{metric}:Q", title="%", scale=alt.Scale(zero=False)),
         )
+
+        bars = base.mark_bar().encode(
+            color=alt.Color("Model:N", scale=color_scale, legend=None),
+            tooltip=["Model", alt.Tooltip(f"{metric}:Q", format=".2f")],
+        )
+
+        # Value label centered just above each bar's top edge.
+        labels = base.mark_text(
+            align="center",
+            baseline="bottom",
+            dy=-4,
+            fontSize=12,
+            fontWeight="bold",
+        ).encode(
+            text=alt.Text(f"{metric}:Q", format=".2f"),
+        )
+
+        return (bars + labels).properties(height=320)
 
     tabs = st.tabs([m.replace("_", " ") for m in metric_cols])
     for tab, metric in zip(tabs, metric_cols):
@@ -248,18 +249,21 @@ def render_comparison_charts(df: pd.DataFrame):
     with st.expander("Show all metrics side-by-side (grouped)"):
         melted = df.melt(id_vars="Model", value_vars=metric_cols,
                           var_name="Metric", value_name="Value")
-        grouped = (
-            alt.Chart(melted)
-            .mark_bar()
-            .encode(
-                x=alt.X("Model:N", sort=None, title=None),
-                y=alt.Y("Value:Q", title="%", scale=alt.Scale(domain=[0, 100])),
-                color=alt.Color("Model:N", scale=color_scale, legend=alt.Legend(title="Model")),
-                column=alt.Column("Metric:N", title=None),
-                tooltip=["Model", "Metric", alt.Tooltip("Value:Q", format=".2f")],
-            )
-            .properties(height=280, width=120)
+        base = alt.Chart(melted).encode(
+            x=alt.X("Model:N", sort=None, title=None),
+            y=alt.Y("Value:Q", title="%", scale=alt.Scale(domain=[0, 100])),
+            column=alt.Column("Metric:N", title=None),
         )
+        bars = base.mark_bar().encode(
+            color=alt.Color("Model:N", scale=color_scale, legend=alt.Legend(title="Model")),
+            tooltip=["Model", "Metric", alt.Tooltip("Value:Q", format=".2f")],
+        )
+        labels = base.mark_text(
+            align="center", baseline="bottom", dy=-2, fontSize=9,
+        ).encode(
+            text=alt.Text("Value:Q", format=".1f"),
+        )
+        grouped = (bars + labels).properties(height=280, width=120)
         st.altair_chart(grouped, use_container_width=False, key="cmp_chart_grouped")
 
 
@@ -276,7 +280,8 @@ st.divider()
 
 rf_model, knn_model, svm_model, ann_model = load_models()
 comparison_df = load_comparison()
-real_scaler = get_real_scaler(knn_model)
+real_scaler = load_svm_scaler()                    # SVM's own fitted StandardScaler (SVM input only)
+minmax_scaler, minmax_cols = load_scaler()         # actual training-time MinMaxScaler (numeric inputs)
 
 st.sidebar.header("Model selection")
 model_choice = st.sidebar.radio(
@@ -367,29 +372,27 @@ if st.button("🔍 Predict obesity level", type="primary", use_container_width=T
     )
     st.divider()
 
-    X = build_feature_vector(inputs)
+    X = build_feature_vector(inputs, minmax_scaler, minmax_cols)
     X_values = X.values.astype(float)
 
     def predict_proba(model_name):
-        # RF: verified (via tree split thresholds) trained on the raw
-        # min-max/ordinal vector below - keep as-is, do NOT standardize.
+        # RF: verified (via its training notebook) — trained directly on the
+        # raw min-max/ordinal feature vector, no extra scaling. Keep as-is.
         if model_name == "Random Forest":
             return rf_model.predict_proba(X_values)[0]
-        # KNN: standardizes internally via its own embedded pipeline -
+        # KNN: standardizes internally via its own embedded pipeline —
         # keep feeding it the raw vector, do not double-scale.
         if model_name == "KNN":
             return knn_model.predict_proba(X_values)[0]
-        # SVM: verified (via support_vectors_ stats) trained on standardized
-        # features - apply the recovered scaler before predicting.
+        # SVM: verified (via its training notebook) — trained on features
+        # standardized with SVM's own StandardScaler. Apply it before predict.
         if model_name == "SVM":
             X_std = real_scaler.transform(X_values)
             return svm_model.predict_proba(X_std)[0]
-        # ANN: true training-time scale unverifiable without the original
-        # notebook - standardized version empirically agreed with the
-        # KNN/SVM majority more often in testing, used as current default.
+        # ANN: verified (via its training notebook) — trained directly on
+        # the raw min-max/ordinal feature vector, same as RF. No scaling.
         if model_name == "ANN":
-            X_std = real_scaler.transform(X_values)
-            return ann_model.predict(X_std, verbose=0)[0]
+            return ann_model.predict(X_values, verbose=0)[0]
         raise ValueError(model_name)
 
     def show_result(model_name, proba):
