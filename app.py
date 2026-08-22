@@ -204,15 +204,28 @@ def render_comparison_charts(df: pd.DataFrame):
     )
 
     def bar_chart_for(metric: str):
-        # scale(zero=False) lets Vega-Lite auto-zoom the y-axis to the
-        # data's natural range instead of forcing it to start at 0 —
-        # otherwise metrics clustered close together (e.g. 86%, 87%, 86%,
-        # 98%) produce bars that look nearly identical across tabs even
-        # though the underlying values differ. This uses Altair's built-in
-        # auto-scaling rather than manually computed domain bounds.
+        # zero=False auto-zooms the y-axis to the data's natural range
+        # instead of forcing it to start at 0 — otherwise metrics
+        # clustered close together (e.g. 86%, 87%, 86%, 98%) produce bars
+        # that look nearly identical across tabs even though the
+        # underlying values differ. On top of that, we manually pad the
+        # domain's upper bound so the value label has clear space to sit
+        # above the tallest bar instead of being clipped by the plot edge
+        # (which is what was happening before — the label was there, just
+        # squeezed against the top axis line).
+        y_min = df[metric].min()
+        y_max = df[metric].max()
+        span = max(y_max - y_min, 1e-6)
+        domain_min = y_min - span * 0.15
+        domain_max = y_max + span * 0.25
+
         base = alt.Chart(df).encode(
             x=alt.X("Model:N", sort=None, title=None),
-            y=alt.Y(f"{metric}:Q", title="%", scale=alt.Scale(zero=False)),
+            y=alt.Y(
+                f"{metric}:Q",
+                title="%",
+                scale=alt.Scale(domain=[domain_min, domain_max]),
+            ),
         )
 
         bars = base.mark_bar().encode(
@@ -220,13 +233,15 @@ def render_comparison_charts(df: pd.DataFrame):
             tooltip=["Model", alt.Tooltip(f"{metric}:Q", format=".2f")],
         )
 
-        # Value label centered just above each bar's top edge.
+        # Value label clearly above each bar's top edge, with room to
+        # breathe now that the y-domain has headroom baked in.
         labels = base.mark_text(
             align="center",
             baseline="bottom",
-            dy=-4,
-            fontSize=12,
+            dy=-10,
+            fontSize=15,
             fontWeight="bold",
+            color="white",
         ).encode(
             text=alt.Text(f"{metric}:Q", format=".2f"),
         )
