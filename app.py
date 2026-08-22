@@ -4,15 +4,6 @@ import pandas as pd
 import joblib
 import keras
 
-# ----------------------------------------------------------------------
-# CONFIG — edit this block if your original preprocessing differs
-# ----------------------------------------------------------------------
-
-# NOTE: numeric scaling no longer uses guessed min/max values. The real
-# fitted MinMaxScaler (obesity_scaler.joblib) is loaded further down and
-# used directly, so this file no longer needs to know or guess the
-# training-set ranges at all — see scale_numeric_inputs().
-
 # Binary / ordinal encodings assumed during training
 ENCODINGS = {
     "Gender": {"Female": 0, "Male": 1},
@@ -27,14 +18,6 @@ ENCODINGS = {
 MTRANS_OPTIONS = ["Automobile", "Bike", "Motorbike", "Public_Transportation", "Walking"]
 # "Automobile" was dropped as the one-hot baseline (all MTRANS_* columns = 0)
 
-# NOTE: Height and Weight are deliberately NOT in FEATURE_ORDER and never
-# reach the trained models. NObeyesdad (the target) is essentially a
-# bucketed version of BMI = Weight / Height^2, so feeding Height/Weight (or
-# BMI) into the model would leak the answer straight to it and inflate
-# accuracy without the model learning anything about behaviour. They're
-# collected below ONLY to show a simple, direct BMI calculation next to
-# the model's behavioural prediction — two independent numbers, not one
-# feeding the other.
 def bmi_to_label(bmi: float) -> str:
     if bmi < 18.5: return "Insufficient_Weight"
     elif bmi < 25: return "Normal_Weight"
@@ -50,12 +33,7 @@ FEATURE_ORDER = [
     "MTRANS_Bike", "MTRANS_Motorbike", "MTRANS_Public_Transportation", "MTRANS_Walking",
 ]
 
-# Label order — MUST match the target_order used when NObeyesdad was
-# encoded during training (from data_cleaning.py: severity order, NOT
-# alphabetical). Using the wrong order here doesn't crash anything, it
-# just silently mislabels the model's output (e.g. showing "Obesity Type
-# III" when the model actually predicted "Obesity Type I"), which is what
-# was causing the wildly inconsistent-looking predictions across models.
+
 LABEL_MAP = {
     0: "Insufficient_Weight",
     1: "Normal_Weight",
@@ -174,8 +152,7 @@ with st.expander("ℹ️ About this app's inputs"):
 
 import altair as alt
 
-# Fixed color per model, kept consistent across every metric tab so the
-# same model always shows the same color throughout the app.
+
 MODEL_COLORS = {
     "Random Forest": "#EF4444",
     "SVM": "#3B82F6",
@@ -204,21 +181,7 @@ def render_comparison_charts(df: pd.DataFrame):
     )
 
     def bar_chart_for(metric: str):
-        # zero=False lets Vega-Lite auto-zoom the y-axis to the data's
-        # natural range instead of forcing it to start at 0 — otherwise
-        # metrics clustered close together (e.g. 86%, 87%, 86%, 98%)
-        # produce bars that look nearly identical across tabs even though
-        # the underlying values differ.
-        #
-        # NOTE: an earlier version of this also set an explicit `domain`
-        # on the scale to force extra headroom above the tallest bar for
-        # the value label. That rendered fine in offline testing but
-        # blanked the *actual* chart in this app's Streamlit/Vega-Lite
-        # runtime (bars and all) — so it's deliberately avoided now.
-        # zero=False alone is the same config the chart used back when
-        # bars were rendering correctly; headroom for the label is added
-        # below via chart-level padding + clip=False instead, which
-        # doesn't touch the data scale at all.
+
         base = alt.Chart(df).encode(
             x=alt.X("Model:N", sort=None, title=None),
             y=alt.Y(f"{metric}:Q", title="%", scale=alt.Scale(zero=False)),
@@ -229,10 +192,6 @@ def render_comparison_charts(df: pd.DataFrame):
             tooltip=["Model", alt.Tooltip(f"{metric}:Q", format=".2f")],
         )
 
-        # Value label above each bar's top edge. clip=False lets it draw
-        # into the padding area above the plot instead of being cut off
-        # by the axis boundary. Single mark with both a dark fill and a
-        # light stroke so it stays readable on light or dark themes.
         labels = base.mark_text(
             clip=False,
             align="center",
@@ -240,9 +199,7 @@ def render_comparison_charts(df: pd.DataFrame):
             dy=-8,
             fontSize=14,
             fontWeight="bold",
-            color="#111111",
-            stroke="white",
-            strokeWidth=2.5,
+            color="#000000",
         ).encode(
             text=alt.Text(f"{metric}:Q", format=".2f"),
         )
@@ -268,11 +225,6 @@ def render_comparison_charts(df: pd.DataFrame):
     with st.expander("Show all metrics side-by-side (grouped)"):
         melted = df.melt(id_vars="Model", value_vars=metric_cols,
                           var_name="Metric", value_name="Value")
-        # NOTE: `column`/`row` facet encodings must be applied to the
-        # already-layered chart, not baked into a shared base that gets
-        # layered — putting it in the base and then doing bars + labels
-        # produces an invalid spec (SchemaValidationError). Layer first,
-        # facet second.
         base = alt.Chart(melted).encode(
             x=alt.X("Model:N", sort=None, title=None),
             y=alt.Y("Value:Q", title="%", scale=alt.Scale(domain=[0, 100])),
@@ -500,21 +452,16 @@ if st.button("🔍 Predict obesity level", type="primary", use_container_width=T
     X_values = X.values.astype(float)
 
     def predict_proba(model_name):
-        # RF: verified (via its training notebook) — trained directly on the
-        # raw min-max/ordinal feature vector, no extra scaling. Keep as-is.
         if model_name == "Random Forest":
             return rf_model.predict_proba(X_values)[0]
-        # KNN: standardizes internally via its own embedded pipeline —
-        # keep feeding it the raw vector, do not double-scale.
+
         if model_name == "KNN":
             return knn_model.predict_proba(X_values)[0]
-        # SVM: verified (via its training notebook) — trained on features
-        # standardized with SVM's own StandardScaler. Apply it before predict.
+
         if model_name == "SVM":
             X_std = real_scaler.transform(X_values)
             return svm_model.predict_proba(X_std)[0]
-        # ANN: verified (via its training notebook) — trained directly on
-        # the raw min-max/ordinal feature vector, same as RF. No scaling.
+
         if model_name == "ANN":
             return ann_model.predict(X_values, verbose=0)[0]
         raise ValueError(model_name)
@@ -557,11 +504,6 @@ if st.button("🔍 Predict obesity level", type="primary", use_container_width=T
             tooltip=["Category", alt.Tooltip("Probability", format=".2%")]
         )
 
-        # Value label above each bar, shown as a percentage. clip=False
-        # lets labels on the tallest bar draw past the plot edge instead
-        # of being cut off (kept as a single mark with fill+stroke, and
-        # scale left untouched — see the comment in bar_chart_for above
-        # for why a data-scale domain override is avoided here).
         labels = base.mark_text(
             clip=False,
             align="center",
@@ -569,9 +511,7 @@ if st.button("🔍 Predict obesity level", type="primary", use_container_width=T
             dy=-8,
             fontSize=13,
             fontWeight="bold",
-            color="#111111",
-            stroke="white",
-            strokeWidth=2.5,
+            color="#000000",
         ).encode(
             text=alt.Text("Probability:Q", format=".1%"),
         )
@@ -583,7 +523,6 @@ if st.button("🔍 Predict obesity level", type="primary", use_container_width=T
         
         st.altair_chart(chart, use_container_width=True)
 
-    # These lines are now back at the 'if st.button' level
     st.subheader("🧠 Predicted current obesity category (from your habits)")
     st.caption(
         "This is the model's estimate of which obesity category best "
