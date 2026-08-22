@@ -1,5 +1,5 @@
 Model,Accuracy,Precision_Macro,Recall_Macro,F1_Macro,ROC_AUC_Macro
-ANN,74.88,74.75,74.52,73.94,93.95
+ANN,74.88,74.75,74.52,73.94,95.13
 KNN,82.13,81.75,81.99,81.40,97.41
 Random Forest,85.75,86.09,85.63,85.29,97.81
 SVM,82.37,82.71,82.57,82.04,96.95
