@@ -95,10 +95,13 @@ def load_scaler():
     notebook). Loading the actual fitted object instead of guessing
     min/max bounds means this app can never drift out of sync with
     what the models were actually trained on.
+
+    Bundled into a single joblib file: {"scaler": ..., "columns": ...}
+    so the fitted scaler and its expected column order always travel
+    together and can't drift out of sync with each other.
     """
-    scaler = joblib.load("obesity_scaler.joblib")
-    scaler_cols = joblib.load("obesity_scaler_columns.joblib")
-    return scaler, scaler_cols
+    bundle = joblib.load("obesity_scaler_bundle.joblib")
+    return bundle["scaler"], bundle["columns"]
 
 
 def scale_numeric_inputs(inputs: dict, scaler, scaler_cols) -> dict:
