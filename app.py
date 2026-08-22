@@ -210,9 +210,7 @@ def render_comparison_charts(df: pd.DataFrame):
             dy=-8,
             fontSize=20,
             fontWeight="bold",
-            color="#FFFFFF",
-            stroke="black",
-            strokeWidth=2.0,
+            color="#000000",
         ).encode(
             text=alt.Text(f"{metric}:Q", format=".2f"),
         )
