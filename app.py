@@ -238,9 +238,11 @@ def render_comparison_charts(df: pd.DataFrame):
             align="center",
             baseline="bottom",
             dy=-8,
-            fontSize=20,
+            fontSize=14,
             fontWeight="bold",
-            color="#000000",
+            color="#111111",
+            stroke="white",
+            strokeWidth=2.5,
         ).encode(
             text=alt.Text(f"{metric}:Q", format=".2f"),
         )
@@ -288,6 +290,106 @@ def render_comparison_charts(df: pd.DataFrame):
         grouped = layered.facet(column=alt.Column("Metric:N", title=None))
         st.altair_chart(grouped, use_container_width=False, key="cmp_chart_grouped")
 
+
+# ----------------------------------------------------------------------
+# Exploratory Data Analysis (static figures generated from the cleaning
+# notebook, saved under eda_assets/). Shown before model comparison so
+# the page reads as: EDA -> Model comparison -> Prediction.
+# ----------------------------------------------------------------------
+
+st.subheader("🔍 Exploratory Data Analysis")
+st.caption(
+    "Dataset: 2,111 survey responses (2,087 after removing 24 duplicates) "
+    "on eating habits and physical condition, labeled with one of 7 "
+    "obesity levels (NObeyesdad). Height, Weight, and BMI are shown here "
+    "for context only — they're excluded from the model features to "
+    "avoid leaking the answer into the prediction."
+)
+
+with st.expander("📊 Target class distribution", expanded=True):
+    st.markdown(
+        "Classes are fairly balanced, ranging from **12.8%** "
+        "(Insufficient Weight) to **16.8%** (Obesity Type I) of the "
+        "dataset — so no class-imbalance correction (e.g. SMOTE) was "
+        "needed before training."
+    )
+    st.image("eda_assets/fig1_target_distribution.png", use_container_width=True)
+
+with st.expander("📦 Boxplot: numeric feature spread & outliers"):
+    st.markdown(
+        "Shows each numeric feature's raw spread before cleaning. "
+        "**Age** and **NCP** were deliberately left *out* of IQR capping — "
+        "Age's higher values are real adult ages, not errors, and NCP is "
+        "a near-discrete \"meals per day\" value where IQR flags its "
+        "natural clustering as false outliers. The other four "
+        "(FCVC, CH2O, FAF, TUE) were IQR-capped."
+    )
+    st.image("eda_assets/fig2_boxplot.png", use_container_width=True)
+
+with st.expander("📈 Distribution shape & skewness"):
+    st.markdown(
+        "Histogram + skewness score for each numeric feature. **Weight** "
+        "and **BMI** are right-skewed (a longer tail toward higher "
+        "values), which lines up with the dataset having more severe "
+        "obesity classes than a general population sample would."
+    )
+    st.image("eda_assets/fig5_histograms.png", use_container_width=True)
+
+with st.expander("🧩 Pairwise relationships between key features"):
+    st.markdown(
+        "Age, BMI, FCVC (vegetable intake), FAF (physical activity), and "
+        "CH2O (water intake), colored by obesity level. **BMI vs. Age** "
+        "shows the clearest separation — higher obesity classes cluster "
+        "at higher BMI across most ages, as expected."
+    )
+    st.image("eda_assets/fig3_pairplot.png", use_container_width=True)
+
+with st.expander("🔗 Correlation between numeric features"):
+    st.markdown(
+        "As expected, **Weight and BMI are strongly correlated** "
+        "(BMI is derived from Weight and Height), which is exactly why "
+        "both are excluded from the model's input features. Lifestyle "
+        "features (FCVC, FAF, CH2O, TUE) show only weak correlation with "
+        "each other, meaning they contribute fairly independent signal."
+    )
+    st.image("eda_assets/fig4_correlation.png", use_container_width=True)
+
+with st.expander("🧬 All attributes vs. obesity level"):
+    st.markdown(
+        "Categorical features (Gender, family history, MTRANS, etc.) as "
+        "grouped counts; FCVC, NCP, CH2O, FAF, and TUE as density curves "
+        "instead of counts, since those five are continuous "
+        "(FCVC alone has 810 distinct values across 2,111 rows) rather "
+        "than the small set of discrete answers they might look like. "
+        "**Family history of overweight** shows the starkest split: it's "
+        "heavily skewed toward \"yes\" in every obesity class above "
+        "Normal Weight."
+    )
+    st.image("eda_assets/fig6_attributes_by_obesity.png", use_container_width=True)
+
+with st.expander("📋 Categorical features: plain frequency counts"):
+    st.markdown(
+        "Same 8 categorical features as above, but without splitting by "
+        "obesity level — just how common each answer is overall. Most "
+        "are heavily one-sided: **SMOKE** and **SCC** (calorie "
+        "monitoring) are both over 95% \"no\", and **MTRANS** is "
+        "dominated by Public Transportation, which is worth keeping in "
+        "mind since these low-frequency categories give the model very "
+        "few examples to learn from."
+    )
+    st.image("eda_assets/fig8_categorical_univariate.png", use_container_width=True)
+
+with st.expander("🌡️ Average feature values by obesity level"):
+    st.markdown(
+        "Mean value of each numeric feature per obesity class, ordered "
+        "by severity. **Weight and BMI climb steadily** from Insufficient "
+        "Weight through Obesity Type III, while lifestyle features like "
+        "FAF (physical activity) trend gently downward — consistent with "
+        "the behavioral story the model is trying to learn."
+    )
+    st.image("eda_assets/fig7_mean_heatmap.png", use_container_width=True)
+
+st.divider()
 
 st.subheader("📊 Model comparison (test set)")
 st.caption(
@@ -465,9 +567,11 @@ if st.button("🔍 Predict obesity level", type="primary", use_container_width=T
             align="center",
             baseline="bottom",
             dy=-8,
-            fontSize=20,
+            fontSize=13,
             fontWeight="bold",
-            color="#000000",
+            color="#111111",
+            stroke="white",
+            strokeWidth=2.5,
         ).encode(
             text=alt.Text("Probability:Q", format=".1%"),
         )
