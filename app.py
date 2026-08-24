@@ -121,6 +121,15 @@ def load_svm_scaler():
     return joblib.load("svm_scaler.pkl")
 
 
+@st.cache_resource
+def load_ann_scaler():
+    """The real StandardScaler the ANN notebook fit on the full 17-column
+    feature vector and saved (ann_scaler.pkl). Like the SVM scaler, this
+    is applied on top of the already-encoded/MinMax-scaled feature row,
+    right before the ANN's own forward pass."""
+    return joblib.load("ann_scaler.pkl")
+
+
 def build_feature_vector(inputs: dict, scaler, scaler_cols) -> pd.DataFrame:
     scaled_numeric = scale_numeric_inputs(inputs, scaler, scaler_cols)
     row = {
@@ -517,7 +526,7 @@ def render_comparison_page(comparison_df: pd.DataFrame):
 # ----------------------------------------------------------------------
 
 def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
-                         real_scaler, minmax_scaler, minmax_cols):
+                         real_scaler, ann_scaler, minmax_scaler, minmax_cols):
     hero(
         "Predict",
         "⚖️ Obesity Level Predictor",
@@ -530,7 +539,10 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
             "Numeric inputs (Age, FCVC, NCP, CH2O, FAF, TUE) are scaled using the "
             "**actual fitted MinMaxScaler** from training (`obesity_scaler.joblib`), "
             "not guessed ranges. Categorical/ordinal encodings in the `CONFIG` "
-            "block match the mappings used in the cleaning notebook directly."
+            "block match the mappings used in the cleaning notebook directly. "
+            "The SVM and ANN models each additionally apply their own fitted "
+            "`StandardScaler` (`svm_scaler.pkl` / `ann_scaler.pkl`) on top of "
+            "the full feature vector, exactly as done during training."
         )
 
     st.markdown("### Enter your information")
@@ -629,7 +641,8 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
                 return svm_model.predict_proba(X_std)[0]
 
             if model_name == "ANN":
-                return ann_model.predict(X_values, verbose=0)[0]
+                X_std = ann_scaler.transform(X_values)
+                return ann_model.predict(X_std, verbose=0)[0]
             raise ValueError(model_name)
 
         def show_result(model_name, proba):
@@ -740,11 +753,12 @@ if page == "🔮 Predict":
 
     rf_model, knn_model, svm_model, ann_model = load_models()
     real_scaler = load_svm_scaler()               # SVM's own fitted StandardScaler (SVM input only)
+    ann_scaler = load_ann_scaler()                 # ANN's own fitted StandardScaler (ANN input only)
     minmax_scaler, minmax_cols = load_scaler()     # actual training-time MinMaxScaler (numeric inputs)
 
     render_predict_page(
         model_choice, rf_model, knn_model, svm_model, ann_model,
-        real_scaler, minmax_scaler, minmax_cols,
+        real_scaler, ann_scaler, minmax_scaler, minmax_cols,
     )
 
 elif page == "📊 Model Comparison":
