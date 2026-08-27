@@ -4,6 +4,7 @@ import pandas as pd
 import joblib
 import keras
 import altair as alt
+import random
 
 # ----------------------------------------------------------------------
 # Config / encodings
@@ -308,6 +309,87 @@ hr {
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+
+# ----------------------------------------------------------------------
+# Falling-food background animation (burger / veg / water, snow-effect style)
+# ----------------------------------------------------------------------
+
+FOOD_EMOJIS = ["🍔", "🍔", "🥦", "🥕", "🍅", "💧", "💧"]
+
+
+def render_food_rain(n_items: int = 26, seed: int = 7):
+    """Continuous background animation: food emoji drift down the whole
+    app the same way Streamlit's built-in st.snow() does — fixed-position
+    layer, non-interactive (pointer-events: none), looping keyframe fall
+    with per-item randomized size/duration/delay/horizontal drift/rotation.
+
+    A fixed seed keeps the layout stable across Streamlit reruns (every
+    widget interaction reruns the whole script) instead of the items
+    jumping to new random spots on every click.
+    """
+    rng = random.Random(seed)
+    items_html = []
+    for i in range(n_items):
+        emoji = rng.choice(FOOD_EMOJIS)
+        left = rng.uniform(0, 100)                # vw position
+        size = rng.uniform(1.4, 2.8)               # rem
+        duration = rng.uniform(9, 18)               # seconds to fall
+        delay = rng.uniform(-18, 0)                 # negative = already mid-fall on load
+        drift = rng.uniform(-60, 60)                # px horizontal sway
+        spin = rng.choice([1, -1]) * rng.uniform(180, 540)  # deg rotation over the fall
+        items_html.append(
+            f'<div class="food-item" style="'
+            f'left:{left:.2f}vw; '
+            f'font-size:{size:.2f}rem; '
+            f'animation-duration:{duration:.2f}s; '
+            f'animation-delay:{delay:.2f}s; '
+            f'--drift:{drift:.1f}px; '
+            f'--spin:{spin:.0f}deg;">{emoji}</div>'
+        )
+
+    st.markdown(
+        f"""
+        <style>
+        @keyframes food-fall {{
+            0%   {{ transform: translateY(-10vh) translateX(0) rotate(0deg); opacity: 0; }}
+            8%   {{ opacity: 0.9; }}
+            50%  {{ transform: translateY(50vh) translateX(var(--drift)) rotate(calc(var(--spin) * 0.5)); }}
+            92%  {{ opacity: 0.9; }}
+            100% {{ transform: translateY(110vh) translateX(0) rotate(var(--spin)); opacity: 0; }}
+        }}
+        .food-rain-container {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            pointer-events: none;
+            z-index: 3;
+        }}
+        .food-item {{
+            position: absolute;
+            top: 0;
+            will-change: transform, opacity;
+            animation-name: food-fall;
+            animation-timing-function: linear;
+            animation-iteration-count: infinite;
+            filter: drop-shadow(0 2px 3px rgba(0,0,0,0.15));
+        }}
+        @media (prefers-reduced-motion: reduce) {{
+            .food-rain-container {{ display: none; }}
+        }}
+        </style>
+        <div class="food-rain-container">
+            {''.join(items_html)}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+render_food_rain()
 
 
 def hero(pill: str, title: str, caption: str):
