@@ -5,7 +5,6 @@ import joblib
 import keras
 import altair as alt
 import random
-import time
 
 # ----------------------------------------------------------------------
 # Config / encodings
@@ -407,43 +406,8 @@ def hero(pill: str, title: str, caption: str):
 
 
 # ----------------------------------------------------------------------
-# Bar "shoot up" entrance animation
+# Model comparison charts (accuracy, precision, recall, F1, ROC AUC)
 # ----------------------------------------------------------------------
-
-def animate_grow_in(placeholder, df_final: pd.DataFrame, y_field: str,
-                     build_chart_fn, key: str, domain_min: float = 0.0,
-                     steps: int = 22, frame_delay: float = 0.016):
-    """Redraws build_chart_fn(frame_df) into `placeholder` a few times in a
-    fast loop, with the bars' values eased from `domain_min` up to their
-    real final value — a lightweight, dependency-free way to get a
-    "shoot up" entrance animation out of Altair/Vega-Lite, which has no
-    native support for animating in freshly-drawn (non-interactive) charts.
-
-    Uses an ease-out-back curve: bars overshoot slightly past their final
-    height then settle back, which reads as a snappy "pop" rather than a
-    flat linear rise. Falls back to a single static draw if steps <= 1.
-    """
-    final_values = df_final[y_field].astype(float).to_numpy()
-
-    if steps <= 1:
-        placeholder.altair_chart(build_chart_fn(df_final), use_container_width=True, key=f"{key}_static")
-        return
-
-    # ease-out-back: overshoots past 1.0 around 80% of the way through,
-    # then eases back down to exactly 1.0 on the final frame.
-    c1, c3 = 1.70158, 2.70158
-
-    def ease_out_back(t: float) -> float:
-        return 1 + c3 * (t - 1) ** 3 + c1 * (t - 1) ** 2
-
-    for i in range(1, steps + 1):
-        t = i / steps
-        eased = ease_out_back(t) if i < steps else 1.0  # land exactly on the real value
-        frame_df = df_final.copy()
-        frame_df[y_field] = domain_min + (final_values - domain_min) * eased
-        placeholder.altair_chart(build_chart_fn(frame_df), use_container_width=True, key=f"{key}_f{i}")
-        time.sleep(frame_delay)
-
 
 def render_comparison_charts(df: pd.DataFrame):
     """Bar charts comparing all models across every metric in model_comparison.csv.
@@ -464,18 +428,34 @@ def render_comparison_charts(df: pd.DataFrame):
         range=[MODEL_COLORS.get(m, "#94A3B8") for m in models_present],
     )
 
-    # Fixed, explicit y-domain per metric (computed once from the real data)
-    # instead of scale=alt.Scale(zero=False). zero=False lets Vega-Lite
-    # auto-pick a "nice" domain from whatever df it's currently given —
-    # fine for a single static render, but during the growth animation each
-    # frame carries different (still-rising) values, so an auto domain would
-    # rescale itself every frame and the bars would never visibly move.
-    # Locking the domain up front keeps the axis still while the bars grow.
-    metric_domains = {}
-    for metric in metric_cols:
-        lo, hi = float(df[metric].min()), float(df[metric].max())
-        pad = max((hi - lo) * 0.25, 1.0)
-        metric_domains[metric] = (max(0.0, lo - pad), hi + pad)
+    def bar_chart_for(metric: str):
+
+        base = alt.Chart(df).encode(
+            x=alt.X("Model:N", sort=None, title=None),
+            y=alt.Y(f"{metric}:Q", title="%", scale=alt.Scale(zero=False)),
+        )
+
+        bars = base.mark_bar(clip=False, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+            color=alt.Color("Model:N", scale=color_scale, legend=None),
+            tooltip=["Model", alt.Tooltip(f"{metric}:Q", format=".2f")],
+        )
+
+        labels = base.mark_text(
+            clip=False,
+            align="center",
+            baseline="bottom",
+            dy=-8,
+            fontSize=14,
+            fontWeight="bold",
+            color="#0F172A",
+        ).encode(
+            text=alt.Text(f"{metric}:Q", format=".2f"),
+        )
+
+        return (bars + labels).properties(
+            height=320,
+            padding={"top": 25, "left": 5, "right": 5, "bottom": 5},
+        )
 
     tabs = st.tabs([m.replace("_", " ") for m in metric_cols])
     for tab, metric in zip(tabs, metric_cols):
@@ -484,17 +464,10 @@ def render_comparison_charts(df: pd.DataFrame):
                 f"Range shown: {df[metric].min():.2f}% – {df[metric].max():.2f}% "
                 "(zoomed in — not 0-100 — so small differences between models are visible)"
             )
-            placeholder = st.empty()
-            domain_min = metric_domains[metric][0]
-            animate_grow_in(
-                placeholder,
-                df,
-                y_field=metric,
-                build_chart_fn=lambda frame_df, m=metric, d=metric_domains[metric]: bar_chart_for_frame(
-                    frame_df, m, color_scale, d
-                ),
+            st.altair_chart(
+                bar_chart_for(metric),
+                use_container_width=True,
                 key=f"cmp_chart_{metric}",
-                domain_min=domain_min,
             )
 
     with st.expander("Show all metrics side-by-side (grouped)"):
@@ -516,30 +489,6 @@ def render_comparison_charts(df: pd.DataFrame):
         layered = alt.layer(bars, labels).properties(height=280, width=120)
         grouped = layered.facet(column=alt.Column("Metric:N", title=None))
         st.altair_chart(grouped, use_container_width=False, key="cmp_chart_grouped")
-
-
-def bar_chart_for_frame(df, metric, color_scale, domain):
-    """Same visual spec as the comparison bar chart, but built fresh
-    for a single animation frame's (partially-grown) dataframe, using a
-    fixed y-domain so the axis doesn't rescale mid-animation."""
-    base = alt.Chart(df).encode(
-        x=alt.X("Model:N", sort=None, title=None),
-        y=alt.Y(f"{metric}:Q", title="%", scale=alt.Scale(domain=list(domain))),
-    )
-    bars = base.mark_bar(clip=False, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
-        color=alt.Color("Model:N", scale=color_scale, legend=None),
-        tooltip=["Model", alt.Tooltip(f"{metric}:Q", format=".2f")],
-    )
-    labels = base.mark_text(
-        clip=False, align="center", baseline="bottom", dy=-8,
-        fontSize=14, fontWeight="bold", color="#0F172A",
-    ).encode(
-        text=alt.Text(f"{metric}:Q", format=".2f"),
-    )
-    return (bars + labels).properties(
-        height=320,
-        padding={"top": 25, "left": 5, "right": 5, "bottom": 5},
-    )
 
 
 # ----------------------------------------------------------------------
@@ -801,14 +750,38 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
                 "Color": colors
             })
 
-            placeholder = st.empty()
-            animate_grow_in(
-                placeholder,
-                proba_df,
-                y_field="Probability",
-                build_chart_fn=lambda frame_df: proba_chart_for_frame(frame_df, categories),
-                key=f"proba_chart_{model_name}",
+            # 2. Use Altair for the chart to force the categorical order and use custom colors
+            base = (
+                alt.Chart(proba_df)
+                .encode(
+                    x=alt.X("Category:N", sort=categories, title="Obesity Level"),
+                    y=alt.Y("Probability:Q", title="Probability", scale=alt.Scale(domain=[0, 1])),
+                )
             )
+
+            bars = base.mark_bar(clip=False, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+                color=alt.Color("Color:N", scale=None),
+                tooltip=["Category", alt.Tooltip("Probability", format=".2%")]
+            )
+
+            labels = base.mark_text(
+                clip=False,
+                align="center",
+                baseline="bottom",
+                dy=-8,
+                fontSize=13,
+                fontWeight="bold",
+                color="#0F172A",
+            ).encode(
+                text=alt.Text("Probability:Q", format=".1%"),
+            )
+
+            chart = (bars + labels).properties(
+                height=350,
+                padding={"top": 20, "left": 5, "right": 5, "bottom": 5},
+            )
+
+            st.altair_chart(chart, use_container_width=True)
 
         st.subheader("🧠 Predicted current obesity category (from your habits)")
         st.caption(
@@ -829,32 +802,6 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
 
         with st.expander("See the encoded feature vector sent to the model"):
             st.dataframe(X, use_container_width=True)
-
-
-def proba_chart_for_frame(df, categories):
-    """Same visual spec as the prediction probability chart, built fresh
-    for a single animation frame's (partially-grown) dataframe."""
-    base = (
-        alt.Chart(df)
-        .encode(
-            x=alt.X("Category:N", sort=categories, title="Obesity Level"),
-            y=alt.Y("Probability:Q", title="Probability", scale=alt.Scale(domain=[0, 1])),
-        )
-    )
-    bars = base.mark_bar(clip=False, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
-        color=alt.Color("Color:N", scale=None),
-        tooltip=["Category", alt.Tooltip("Probability", format=".2%")]
-    )
-    labels = base.mark_text(
-        clip=False, align="center", baseline="bottom", dy=-8,
-        fontSize=13, fontWeight="bold", color="#0F172A",
-    ).encode(
-        text=alt.Text("Probability:Q", format=".1%"),
-    )
-    return (bars + labels).properties(
-        height=350,
-        padding={"top": 20, "left": 5, "right": 5, "bottom": 5},
-    )
 
 
 # ----------------------------------------------------------------------
