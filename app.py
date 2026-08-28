@@ -494,7 +494,7 @@ def render_comparison_charts(df: pd.DataFrame):
         def build(frame_df):
             base = alt.Chart(frame_df).encode(
                 x=alt.X("Model:N", sort=None, title=None),
-                y=alt.Y(f"{metric}:Q", title="%", scale=alt.Scale(domain=domain)),
+                y=alt.Y(f"{metric}:Q", title="%", scale=alt.Scale(domain=domain, zero=False)),
             )
 
             bars = base.mark_bar(clip=False, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
