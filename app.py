@@ -736,10 +736,24 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
         "MTRANS": mtrans,
     }
 
+    # Signature of everything the results section depends on (model inputs +
+    # height/weight for the BMI card), so we can tell "user just changed
+    # something" apart from "user just clicked Predict" or "switched which
+    # model's tab they're viewing".
+    current_signature = {**inputs, "height_m": height_m, "weight_kg": weight_kg}
+
+    if (st.session_state.get("show_prediction")
+            and st.session_state.get("last_predicted_signature") != current_signature):
+        # An input changed since the last prediction — hide the stale result
+        # immediately rather than leaving it on screen (or silently updating
+        # it) until the user clicks Predict again.
+        st.session_state["show_prediction"] = False
+
     st.divider()
 
     if st.button("🔍 Predict obesity level", type="primary", use_container_width=True):
         st.session_state["show_prediction"] = True
+        st.session_state["last_predicted_signature"] = current_signature
 
     if st.session_state.get("show_prediction"):
         # --- BMI reference (independent of the model, calculated directly) ---
