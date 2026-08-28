@@ -487,39 +487,32 @@ def render_comparison_charts(df: pd.DataFrame):
     )
 
     def bar_chart_for(metric: str):
-        vmin, vmax = df[metric].min(), df[metric].max()
-        pad = max((vmax - vmin) * 0.35, 0.5)  # extra headroom so the overshoot never clips
-        domain = [vmin - pad, vmax + pad]
+        base = alt.Chart(df).encode(
+            x=alt.X("Model:N", sort=None, title=None),
+            y=alt.Y(f"{metric}:Q", title="%", scale=alt.Scale(zero=False)),
+        )
 
-        def build(frame_df):
-            base = alt.Chart(frame_df).encode(
-                x=alt.X("Model:N", sort=None, title=None),
-                y=alt.Y(f"{metric}:Q", title="%", scale=alt.Scale(domain=domain, zero=False)),
-            )
+        bars = base.mark_bar(clip=False, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+            color=alt.Color("Model:N", scale=color_scale, legend=None),
+            tooltip=["Model", alt.Tooltip(f"{metric}:Q", format=".2f")],
+        )
 
-            bars = base.mark_bar(clip=False, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
-                color=alt.Color("Model:N", scale=color_scale, legend=None),
-                tooltip=["Model", alt.Tooltip(f"{metric}_final:Q", format=".2f")],
-            )
+        labels = base.mark_text(
+            clip=False,
+            align="center",
+            baseline="bottom",
+            dy=-8,
+            fontSize=14,
+            fontWeight="bold",
+            color="#0F172A",
+        ).encode(
+            text=alt.Text(f"{metric}:Q", format=".2f"),
+        )
 
-            labels = base.mark_text(
-                clip=False,
-                align="center",
-                baseline="bottom",
-                dy=-8,
-                fontSize=14,
-                fontWeight="bold",
-                color="#0F172A",
-            ).encode(
-                text=alt.Text(f"{metric}_final:Q", format=".2f"),
-            )
-
-            return (bars + labels).properties(
-                height=320,
-                padding={"top": 25, "left": 5, "right": 5, "bottom": 5},
-            )
-
-        return build, domain[0]
+        return (bars + labels).properties(
+            height=320,
+            padding={"top": 25, "left": 5, "right": 5, "bottom": 5},
+        )
 
     metric_labels = [m.replace("_", " ") for m in metric_cols]
     selected_label = st.radio(
@@ -531,8 +524,7 @@ def render_comparison_charts(df: pd.DataFrame):
         f"Range shown: {df[metric].min():.2f}% – {df[metric].max():.2f}% "
         "(zoomed in — not 0-100 — so small differences between models are visible)"
     )
-    build, baseline = bar_chart_for(metric)
-    animate_bar_growth(df, metric, build, key=f"cmp_chart_{metric}", start_value=baseline)
+    st.altair_chart(bar_chart_for(metric), use_container_width=True, key=f"cmp_chart_{metric}")
 
     with st.expander("Show all metrics side-by-side (grouped)"):
         melted = df.melt(id_vars="Model", value_vars=metric_cols,
