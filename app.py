@@ -5,6 +5,7 @@ import joblib
 import keras
 import altair as alt
 import random
+import time
 
 # ----------------------------------------------------------------------
 # Config / encodings
@@ -406,6 +407,40 @@ def hero(pill: str, title: str, caption: str):
 
 
 # ----------------------------------------------------------------------
+# Bar-growth animation helper
+# ----------------------------------------------------------------------
+
+def animate_bar_growth(df: pd.DataFrame, value_col: str, chart_builder, key: str,
+                        frames: int = 18, duration: float = 0.6):
+    """Fakes a 'bars shoot up from 0' animation for an Altair bar chart.
+
+    Altair/Vega-Lite (as rendered by st.altair_chart) has no built-in
+    transition API for animating a mark's height, so this does it the
+    way Streamlit apps normally fake it: redraw the chart into a single
+    placeholder several times, scaling `value_col` from 0 up to its real
+    value on each frame, with an ease-out curve so it settles smoothly
+    instead of overshooting or feeling linear/robotic.
+
+    `chart_builder(frame_df) -> alt.Chart` must build its bar height
+    encoding from `value_col`, but should pull on-bar text labels and
+    tooltips from `f"{value_col}_final"` instead, so the printed numbers
+    stay put and only the bar height animates.
+    """
+    placeholder = st.empty()
+    final_values = df[value_col].copy()
+    frame_df = df.copy()
+    frame_df[f"{value_col}_final"] = final_values
+
+    for i in range(1, frames + 1):
+        t = i / frames
+        eased = 1 - (1 - t) ** 3  # ease-out cubic: fast start, gentle settle
+        frame_df[value_col] = final_values * eased
+        placeholder.altair_chart(chart_builder(frame_df), use_container_width=True, key=f"{key}_frame{i}")
+        if i < frames:
+            time.sleep(duration / frames)
+
+
+# ----------------------------------------------------------------------
 # Model comparison charts (accuracy, precision, recall, F1, ROC AUC)
 # ----------------------------------------------------------------------
 
@@ -750,38 +785,42 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
                 "Color": colors
             })
 
-            # 2. Use Altair for the chart to force the categorical order and use custom colors
-            base = (
-                alt.Chart(proba_df)
-                .encode(
-                    x=alt.X("Category:N", sort=categories, title="Obesity Level"),
-                    y=alt.Y("Probability:Q", title="Probability", scale=alt.Scale(domain=[0, 1])),
+            # 2. Use Altair for the chart to force the categorical order and use custom colors.
+            #    Bar height comes from "Probability" (which animate_bar_growth scales
+            #    from 0 up to the real value frame by frame); text/tooltip read from
+            #    "Probability_final" so the printed numbers don't flicker mid-animation.
+            def build_proba_chart(frame_df):
+                base = (
+                    alt.Chart(frame_df)
+                    .encode(
+                        x=alt.X("Category:N", sort=categories, title="Obesity Level"),
+                        y=alt.Y("Probability:Q", title="Probability", scale=alt.Scale(domain=[0, 1])),
+                    )
                 )
-            )
 
-            bars = base.mark_bar(clip=False, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
-                color=alt.Color("Color:N", scale=None),
-                tooltip=["Category", alt.Tooltip("Probability", format=".2%")]
-            )
+                bars = base.mark_bar(clip=False, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+                    color=alt.Color("Color:N", scale=None),
+                    tooltip=["Category", alt.Tooltip("Probability_final:Q", format=".2%")]
+                )
 
-            labels = base.mark_text(
-                clip=False,
-                align="center",
-                baseline="bottom",
-                dy=-8,
-                fontSize=13,
-                fontWeight="bold",
-                color="#0F172A",
-            ).encode(
-                text=alt.Text("Probability:Q", format=".1%"),
-            )
+                labels = base.mark_text(
+                    clip=False,
+                    align="center",
+                    baseline="bottom",
+                    dy=-8,
+                    fontSize=13,
+                    fontWeight="bold",
+                    color="#0F172A",
+                ).encode(
+                    text=alt.Text("Probability_final:Q", format=".1%"),
+                )
 
-            chart = (bars + labels).properties(
-                height=350,
-                padding={"top": 20, "left": 5, "right": 5, "bottom": 5},
-            )
+                return (bars + labels).properties(
+                    height=350,
+                    padding={"top": 20, "left": 5, "right": 5, "bottom": 5},
+                )
 
-            st.altair_chart(chart, use_container_width=True)
+            animate_bar_growth(proba_df, "Probability", build_proba_chart, key=f"proba_chart_{model_name}")
 
         st.subheader("🧠 Predicted current obesity category (from your habits)")
         st.caption(
