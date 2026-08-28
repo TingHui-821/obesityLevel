@@ -458,7 +458,7 @@ def animate_bar_growth(df: pd.DataFrame, value_col: str, chart_builder, key: str
         t = i / frames
         eased = 1.0 if i == frames else _ease_out_back(t, punch=punch)
         frame_df[value_col] = start_values + (final_values - start_values) * eased
-        placeholder.altair_chart(chart_builder(frame_df), use_container_width=True, key=f"{key}_frame{i}")
+        placeholder.altair_chart(chart_builder(frame_df), use_container_width=True, key=key)
         if i < frames:
             time.sleep(duration / frames)
 
