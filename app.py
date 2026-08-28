@@ -410,31 +410,54 @@ def hero(pill: str, title: str, caption: str):
 # Bar-growth animation helper
 # ----------------------------------------------------------------------
 
+def _ease_out_back(t: float, punch: float = 1.4) -> float:
+    """Ease-out-back: overshoots past the target then settles — this is
+    what actually reads as 'shoot up' rather than a gentle slide-in.
+    Returns exactly 1.0 at t=1.0 (no permanent offset), peaks a bit above
+    1.0 partway through. Larger `punch` = more overshoot/bounce."""
+    c3 = punch + 1
+    t -= 1
+    return 1 + c3 * (t ** 3) + punch * (t ** 2)
+
+
 def animate_bar_growth(df: pd.DataFrame, value_col: str, chart_builder, key: str,
-                        frames: int = 18, duration: float = 0.6):
-    """Fakes a 'bars shoot up from 0' animation for an Altair bar chart.
+                        frames: int = 20, duration: float = 0.7,
+                        start_value=0.0, punch: float = 1.4):
+    """Fakes a 'bars shoot up' animation for an Altair bar chart.
 
     Altair/Vega-Lite (as rendered by st.altair_chart) has no built-in
     transition API for animating a mark's height, so this does it the
     way Streamlit apps normally fake it: redraw the chart into a single
-    placeholder several times, scaling `value_col` from 0 up to its real
-    value on each frame, with an ease-out curve so it settles smoothly
-    instead of overshooting or feeling linear/robotic.
+    placeholder several times, moving `value_col` from `start_value` up
+    to its real value on each frame, with an ease-out-BACK curve (a
+    small overshoot past the final height before settling) so the
+    motion is actually visible instead of a subtle fade.
+
+    `start_value` can be 0 (grow from nothing — good for a 0-1 probability
+    axis) or a baseline like the chart's y-domain minimum (good for a
+    zoomed-in, non-zero axis, so bars still visibly shoot up from the
+    bottom of the *visible* chart instead of from an invisible zero far
+    below it). It can be a scalar (same baseline for every bar) or an
+    array-like matching df's row order (a different baseline per bar).
 
     `chart_builder(frame_df) -> alt.Chart` must build its bar height
-    encoding from `value_col`, but should pull on-bar text labels and
-    tooltips from `f"{value_col}_final"` instead, so the printed numbers
-    stay put and only the bar height animates.
+    encoding from `value_col`, and its y-scale domain must be wide enough
+    to show the overshoot (chart_builder should compute that domain from
+    the ORIGINAL final values, not from frame_df, so the axis doesn't
+    itself jump around frame to frame). It should pull on-bar text labels
+    and tooltips from `f"{value_col}_final"` instead, so the printed
+    numbers stay put and only the bar height animates.
     """
     placeholder = st.empty()
-    final_values = df[value_col].copy()
+    final_values = df[value_col].astype(float).copy()
+    start_values = pd.Series(start_value, index=final_values.index, dtype=float)
     frame_df = df.copy()
     frame_df[f"{value_col}_final"] = final_values
 
     for i in range(1, frames + 1):
         t = i / frames
-        eased = 1 - (1 - t) ** 3  # ease-out cubic: fast start, gentle settle
-        frame_df[value_col] = final_values * eased
+        eased = 1.0 if i == frames else _ease_out_back(t, punch=punch)
+        frame_df[value_col] = start_values + (final_values - start_values) * eased
         placeholder.altair_chart(chart_builder(frame_df), use_container_width=True, key=f"{key}_frame{i}")
         if i < frames:
             time.sleep(duration / frames)
@@ -464,46 +487,52 @@ def render_comparison_charts(df: pd.DataFrame):
     )
 
     def bar_chart_for(metric: str):
+        vmin, vmax = df[metric].min(), df[metric].max()
+        pad = max((vmax - vmin) * 0.35, 0.5)  # extra headroom so the overshoot never clips
+        domain = [vmin - pad, vmax + pad]
 
-        base = alt.Chart(df).encode(
-            x=alt.X("Model:N", sort=None, title=None),
-            y=alt.Y(f"{metric}:Q", title="%", scale=alt.Scale(zero=False)),
-        )
-
-        bars = base.mark_bar(clip=False, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
-            color=alt.Color("Model:N", scale=color_scale, legend=None),
-            tooltip=["Model", alt.Tooltip(f"{metric}:Q", format=".2f")],
-        )
-
-        labels = base.mark_text(
-            clip=False,
-            align="center",
-            baseline="bottom",
-            dy=-8,
-            fontSize=14,
-            fontWeight="bold",
-            color="#0F172A",
-        ).encode(
-            text=alt.Text(f"{metric}:Q", format=".2f"),
-        )
-
-        return (bars + labels).properties(
-            height=320,
-            padding={"top": 25, "left": 5, "right": 5, "bottom": 5},
-        )
-
-    tabs = st.tabs([m.replace("_", " ") for m in metric_cols])
-    for tab, metric in zip(tabs, metric_cols):
-        with tab:
-            st.caption(
-                f"Range shown: {df[metric].min():.2f}% – {df[metric].max():.2f}% "
-                "(zoomed in — not 0-100 — so small differences between models are visible)"
+        def build(frame_df):
+            base = alt.Chart(frame_df).encode(
+                x=alt.X("Model:N", sort=None, title=None),
+                y=alt.Y(f"{metric}:Q", title="%", scale=alt.Scale(domain=domain)),
             )
-            st.altair_chart(
-                bar_chart_for(metric),
-                use_container_width=True,
-                key=f"cmp_chart_{metric}",
+
+            bars = base.mark_bar(clip=False, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+                color=alt.Color("Model:N", scale=color_scale, legend=None),
+                tooltip=["Model", alt.Tooltip(f"{metric}_final:Q", format=".2f")],
             )
+
+            labels = base.mark_text(
+                clip=False,
+                align="center",
+                baseline="bottom",
+                dy=-8,
+                fontSize=14,
+                fontWeight="bold",
+                color="#0F172A",
+            ).encode(
+                text=alt.Text(f"{metric}_final:Q", format=".2f"),
+            )
+
+            return (bars + labels).properties(
+                height=320,
+                padding={"top": 25, "left": 5, "right": 5, "bottom": 5},
+            )
+
+        return build, domain[0]
+
+    metric_labels = [m.replace("_", " ") for m in metric_cols]
+    selected_label = st.radio(
+        "Metric", metric_labels, horizontal=True, key="cmp_metric_view", label_visibility="collapsed",
+    )
+    metric = metric_cols[metric_labels.index(selected_label)]
+
+    st.caption(
+        f"Range shown: {df[metric].min():.2f}% – {df[metric].max():.2f}% "
+        "(zoomed in — not 0-100 — so small differences between models are visible)"
+    )
+    build, baseline = bar_chart_for(metric)
+    animate_bar_growth(df, metric, build, key=f"cmp_chart_{metric}", start_value=baseline)
 
     with st.expander("Show all metrics side-by-side (grouped)"):
         melted = df.melt(id_vars="Model", value_vars=metric_cols,
@@ -718,6 +747,9 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
     st.divider()
 
     if st.button("🔍 Predict obesity level", type="primary", use_container_width=True):
+        st.session_state["show_prediction"] = True
+
+    if st.session_state.get("show_prediction"):
         # --- BMI reference (independent of the model, calculated directly) ---
         bmi = weight_kg / (height_m ** 2)
         bmi_label = bmi_to_label(bmi)
@@ -794,7 +826,7 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
                     alt.Chart(frame_df)
                     .encode(
                         x=alt.X("Category:N", sort=categories, title="Obesity Level"),
-                        y=alt.Y("Probability:Q", title="Probability", scale=alt.Scale(domain=[0, 1])),
+                        y=alt.Y("Probability:Q", title="Probability", scale=alt.Scale(domain=[0, 1.08])),
                     )
                 )
 
@@ -832,10 +864,11 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
         )
 
         if model_choice == "Compare all 4":
-            tabs = st.tabs(["Random Forest", "SVM", "KNN", "ANN"])
-            for tab, name in zip(tabs, ["Random Forest", "SVM", "KNN", "ANN"]):
-                with tab:
-                    show_result(name, predict_proba(name))
+            compare_names = ["Random Forest", "SVM", "KNN", "ANN"]
+            selected_compare_model = st.radio(
+                "View prediction for:", compare_names, horizontal=True, key="compare_model_view",
+            )
+            show_result(selected_compare_model, predict_proba(selected_compare_model))
         else:
             show_result(model_choice, predict_proba(model_choice))
 
