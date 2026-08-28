@@ -879,7 +879,19 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
             show_result(model_choice, predict_proba(model_choice))
 
         with st.expander("See the encoded feature vector sent to the model"):
-            st.dataframe(X, use_container_width=True)
+            st.caption(
+                "`MTRANS_Automobile` below is display-only, not sent to the "
+                "model — Automobile is the dropped one-hot baseline, so the "
+                "model represents it as all four real `MTRANS_*` columns "
+                "being 0 rather than a column of its own."
+            )
+            X_display = X.copy()
+            X_display.insert(
+                X_display.columns.get_loc("MTRANS_Bike"),
+                "MTRANS_Automobile",
+                inputs["MTRANS"] == "Automobile",
+            )
+            st.dataframe(X_display, use_container_width=True)
 
 
 # ----------------------------------------------------------------------
