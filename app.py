@@ -671,7 +671,7 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
             st.markdown("#### 🧍 Personal")
             gender = st.selectbox("Gender", ["Female", "Male"])
             age = st.slider("Age", 14, 61, 25)
-            family_history = st.selectbox("Family history of overweight?", ["yes", "no"])
+            family_history = st.selectbox("Family history of overweight?", ["no", "yes"])
             smoke = st.selectbox("Do you smoke?", ["no", "yes"])
             st.caption(
                 "Height & weight (optional) — used only to show your BMI for "
