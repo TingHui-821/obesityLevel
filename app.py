@@ -734,7 +734,7 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
         "Predict",
         "⚖️ Obesity Level Predictor",
         "Predicts obesity category from eating habits and physical condition, using 4 "
-        "trained models (Random Forest, KNN, SVM, ANN).",
+        "trained models (Random Forest, KNN (Baseline), SVM, ANN).",
     )
 
     with st.expander("ℹ️ About this app's inputs"):
@@ -935,7 +935,7 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
         )
 
         if model_choice == "Compare all 4":
-            compare_names = ["Random Forest", "SVM", "KNN", "ANN"]
+            compare_names = ["Random Forest", "SVM", "KNN (Baseline)", "ANN"]
             selected_compare_model = st.radio(
                 "View prediction for:", compare_names, horizontal=True, key="compare_model_view",
             )
@@ -975,7 +975,7 @@ if page == "🔮 Predict":
     st.sidebar.header("Model selection")
     model_choice = st.sidebar.radio(
         "Which model should make the prediction?",
-        ["Random Forest", "SVM", "KNN", "ANN", "Compare all 4"],
+        ["Random Forest", "SVM", "KNN (Baseline)", "ANN", "Compare all 4"],
         index=0,
     )
     st.sidebar.divider()
