@@ -68,7 +68,7 @@ LABEL_COLORS = {
 MODEL_COLORS = {
     "Random Forest": "#6B8F5E",   # matcha green
     "SVM": "#E8829A",             # strawberry pink
-    "KNN": "#C9A24B",             # toasted matcha-latte gold
+    "KNN (Baseline)": "#C9A24B",             # toasted matcha-latte gold
     "ANN": "#9B6B8C",             # muted berry purple
 }
 
@@ -853,7 +853,7 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
             if model_name == "Random Forest":
                 return rf_model.predict_proba(X_values)[0]
 
-            if model_name == "KNN":
+            if model_name == "KNN (Baseline)":
                 return knn_model.predict_proba(X_values)[0]
 
             if model_name == "SVM":
