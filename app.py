@@ -201,29 +201,25 @@ st.set_page_config(page_title="Obesity Level Predictor", page_icon="⚖️", lay
 
 CUSTOM_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Playfair+Display:wght@600;700;800;900&display=swap');
 
 html, body, [class*="css"], .stMarkdown, .stText, p, span, label, div {
     font-family: 'Nunito', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 h1, h2, h3, h4, h5, h6, .hero-title {
-    font-family: 'Nunito', 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
+    font-family: 'Playfair Display', Georgia, 'Times New Roman', serif !important;
     font-weight: 800 !important;
     letter-spacing: -0.01em;
 }
 
-/* ================= Sims-style sky/lake backdrop ================= */
-/* Real photo (Gary Ellis, Unsplash — free to use, no attribution required:
-   https://unsplash.com/photos/rr7BbHdxvZQ) instead of a faked gradient —
-   a CSS gradient alone can't reproduce actual cloud/mountain detail.
-   A soft white-to-transparent wash sits on top so page text stays readable
-   over busy parts of the photo, and the same blue/green tint from the old
-   gradient version is blended in underneath it to keep continuity with the
-   rest of the theme (cards, sidebar, etc). */
+/* ================= Sky/lake backdrop ================= */
+/* Back to the mountain/lake photo (Gary Ellis, Unsplash — free to use, no
+   attribution required: https://unsplash.com/photos/rr7BbHdxvZQ), this time
+   with a much heavier white wash on top so text stays readable over the
+   busy mountain/water detail without giving up the photo entirely. */
 .stApp {
     background-image:
-        linear-gradient(180deg, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0.12) 45%, rgba(255,255,255,0.28) 100%),
-        linear-gradient(180deg, rgba(127,184,240,0.35) 0%, rgba(169,212,238,0.2) 25%, rgba(205,233,222,0.15) 50%, rgba(79,174,147,0.3) 100%),
+        linear-gradient(180deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.34) 45%, rgba(255,255,255,0.46) 100%),
         url('https://images.unsplash.com/photo-1607602274042-161d6cba839a?auto=format&fit=crop&w=1920&q=80');
     background-size: cover;
     background-position: 50% 30%;
@@ -446,13 +442,64 @@ hr {
 }
 
 /* ================================================================
-   FANCY PASS: animated backdrop, glow, and per-card vector scenery
+   Darker body text + glossy light-blue "chip" backgrounds for captions
+   and secondary text that sit directly on the photo backdrop (outside
+   the colored cards), so they're never just grey text floating on a
+   busy background — mirrors the rounded gradient chip / badge look
+   from the reference UI kit.
+   ================================================================ */
+
+/* body copy: darker than the previous muted grey, for contrast against
+   the photo backdrop */
+p, .stMarkdown p, li, .stMarkdown li {
+    color: #1F2430;
+}
+
+/* st.caption() text: single flat solid color, square corners — a gradient
+   made from sky-toned blues just blended into the cloud photo behind it,
+   so this needs to be an unmistakably solid, more saturated block instead */
+[data-testid="stCaptionContainer"] {
+    display: block;
+    width: 100%;
+    background: linear-gradient(180deg, #FFFFFF 0%, #EAF4FF 45%, #BFE0FF 100%) !important;
+    opacity: 1 !important;
+    background-blend-mode: normal !important;
+    backdrop-filter: none !important;
+    border: 1px solid #9EC4EA;
+    border-radius: 0;
+    padding: 0.75rem 1.1rem;
+    box-shadow: 0 3px 8px -3px rgba(20,50,90,0.2);
+}
+[data-testid="stCaptionContainer"] p,
+[data-testid="stCaptionContainer"] * {
+    color: #16324F !important;
+    font-weight: 700;
+}
+
+/* ...except inside the sidebar, where it clashed badly with the violet
+   panel — restore plain, unboxed text there */
+section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
+    display: block;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    width: auto;
+}
+section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p,
+section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] * {
+    color: #D3CBFA !important;
+    font-weight: 500;
+}
+
+
    ================================================================ */
 
 @keyframes skyDrift {
-    0%   { background-position: 50% 26%, 50% 26%, 48% 26%; }
-    50%  { background-position: 50% 26%, 50% 26%, 52% 34%; }
-    100% { background-position: 50% 26%, 50% 26%, 48% 26%; }
+    0%   { background-position: 50% 30%, 50% 30%; }
+    50%  { background-position: 50% 30%, 52% 36%; }
+    100% { background-position: 50% 30%, 50% 30%; }
 }
 @keyframes blobFloat {
     0%   { transform: translate(0px, 0px) scale(1); }
@@ -872,7 +919,7 @@ def render_comparison_charts(df: pd.DataFrame):
             dy=-8,
             fontSize=14,
             fontWeight="bold",
-            color="#3A2E70",
+            color="#16324F",
         ).encode(
             x=alt.X("Model:N", sort=models_present, scale=x_scale),
             y=alt.Y(f"{metric}:Q", scale=y_scale),
@@ -883,6 +930,9 @@ def render_comparison_charts(df: pd.DataFrame):
             height=320,
             padding={"top": 25, "left": 5, "right": 5, "bottom": 5},
             background="transparent",
+        ).configure_axis(
+            labelColor="#16324F", titleColor="#16324F", labelFontWeight="bold",
+            gridColor="rgba(22,50,79,0.15)", domainColor="rgba(22,50,79,0.3)",
         )
 
     metric_labels = [m.replace("_", " ") for m in metric_cols]
@@ -916,6 +966,9 @@ def render_comparison_charts(df: pd.DataFrame):
         layered = alt.layer(bars, labels).properties(height=280, width=120)
         grouped = layered.facet(column=alt.Column("Metric:N", title=None)).properties(
             background="transparent"
+        ).configure_axis(
+            labelColor="#16324F", titleColor="#16324F", labelFontWeight="bold",
+            gridColor="rgba(22,50,79,0.15)", domainColor="rgba(22,50,79,0.3)",
         )
         st.altair_chart(grouped, use_container_width=False, key="cmp_chart_grouped")
 
@@ -1042,7 +1095,7 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
         "Predict",
         "⚖️ Obesity Level Predictor",
         "Predicts obesity category from eating habits and physical condition, using 4 "
-        "trained models (Random Forest, KNN, SVM, ANN).",
+        "trained models (Random Forest, KNN (baseline), SVM, ANN).",
     )
 
     with st.expander("ℹ️ About this app's inputs"):
@@ -1161,7 +1214,7 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
             if model_name == "Random Forest":
                 return rf_model.predict_proba(X_values)[0]
 
-            if model_name == "KNN":
+            if model_name == "KNN (Baseline)":
                 return knn_model.predict_proba(X_values)[0]
 
             if model_name == "SVM":
@@ -1228,7 +1281,7 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
                     dy=-8,
                     fontSize=13,
                     fontWeight="bold",
-                    color="#3A2E70",
+                    color="#16324F",
                 ).encode(
                     x=alt.X("Category:N", sort=categories, scale=x_scale),
                     y=alt.Y("Probability:Q", scale=y_scale),
@@ -1239,6 +1292,9 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
                     height=350,
                     padding={"top": 20, "left": 5, "right": 5, "bottom": 5},
                     background="transparent",
+                ).configure_axis(
+                    labelColor="#16324F", titleColor="#16324F", labelFontWeight="bold",
+                    gridColor="rgba(22,50,79,0.15)", domainColor="rgba(22,50,79,0.3)",
                 )
 
             animate_bar_growth(proba_df, "Probability", build_proba_chart, key=f"proba_chart_{model_name}")
@@ -1253,7 +1309,7 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
         )
 
         if model_choice == "Compare all 4":
-            compare_names = ["Random Forest", "SVM", "KNN", "ANN"]
+            compare_names = ["Random Forest", "SVM", "KNN (Baseline)", "ANN"]
             selected_compare_model = st.radio(
                 "View prediction for:", compare_names, horizontal=True, key="compare_model_view",
             )
@@ -1296,7 +1352,7 @@ if page == "🔮 Predict":
     st.sidebar.header("Model selection")
     model_choice = st.sidebar.radio(
         "Which model should make the prediction?",
-        ["Random Forest", "SVM", "KNN", "ANN", "Compare all 4"],
+        ["Random Forest", "SVM", "KNN (Baseline)", "ANN", "Compare all 4"],
         index=0,
     )
     st.sidebar.divider()
