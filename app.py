@@ -68,7 +68,7 @@ LABEL_COLORS = {
 MODEL_COLORS = {
     "Random Forest": "#4FAE93",   # lake mint
     "SVM": "#FF9B72",             # eating-card coral
-    "KNN (Baseline)": "#E3B94D",             # hero gold
+    "KNN": "#E3B94D",             # hero gold
     "ANN": "#6152C4",             # sidebar violet
 }
 
