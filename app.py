@@ -7,10 +7,6 @@ import altair as alt
 import random
 import time
 
-# ----------------------------------------------------------------------
-# Config / encodings
-# ----------------------------------------------------------------------
-
 # Binary / ordinal encodings assumed during training
 ENCODINGS = {
     "Gender": {"Female": 0, "Male": 1},
@@ -53,8 +49,6 @@ LABEL_MAP = {
     6: "Obesity_Type_III",
 }
 
-# Palette kept intuitive (blue -> green -> amber -> red) but tuned to sit
-# nicely against the new light theme.
 LABEL_COLORS = {
     "Insufficient_Weight": "#7FB8F0",
     "Normal_Weight": "#4FAE93",
@@ -375,7 +369,7 @@ div[data-testid="stMetric"] {
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 3px 8px rgba(40,25,110,0.15);
 }
 
-/* ---- Tabs: violet selected pill ---- */
+/* Tabs:violet selected pill */
 button[data-baseweb="tab"] {
     font-weight: 700;
     color: #4A3B9E;
@@ -397,10 +391,7 @@ div[data-testid="stDataFrame"] {
     box-shadow: 0 3px 8px rgba(40,25,110,0.15);
 }
 
-/* ---- Selects / inputs: rounded lavender pill fields ----
-   Fully clip to the pill radius on the OUTER control too, otherwise the
-   outer box stays square and its background peeks out past the rounded
-   corners of the inner element. */
+/* ---- Selects / inputs: rounded lavender pill fields ----*/
 div[data-testid="stSelectbox"] > div,
 div[data-testid="stTextInput"] > div,
 div[data-testid="stNumberInput"] > div,
@@ -420,17 +411,11 @@ input, textarea {
     box-shadow: none !important;
     background: transparent !important;
 }
-/* number input's +/- stepper buttons: round the whole cluster, not the box */
+
 div[data-testid="stNumberInput"] button {
     background: transparent !important;
 }
 
-/* ---- Slider handle: glossy violet orb ----
-   (Reverted to styling just the thumb via the reliable role="slider"
-   selector — the track/value-label part-name selectors weren't reliably
-   matching Streamlit's internal markup across versions, so rather than
-   risk breaking things further we're keeping this to the one selector
-   that's guaranteed correct.) */
 div[data-testid="stSlider"] div[role="slider"] {
     background: radial-gradient(circle at 35% 30%, #C0B6FA 0%, #6152C4 70%, #4A3B9E 100%) !important;
     border: 2px solid #3A2E82 !important;
@@ -440,24 +425,10 @@ div[data-testid="stSlider"] div[role="slider"] {
 hr {
     border-color: rgba(74, 59, 158, 0.25);
 }
-
-/* ================================================================
-   Darker body text + glossy light-blue "chip" backgrounds for captions
-   and secondary text that sit directly on the photo backdrop (outside
-   the colored cards), so they're never just grey text floating on a
-   busy background — mirrors the rounded gradient chip / badge look
-   from the reference UI kit.
-   ================================================================ */
-
-/* body copy: darker than the previous muted grey, for contrast against
-   the photo backdrop */
 p, .stMarkdown p, li, .stMarkdown li {
     color: #1F2430;
 }
 
-/* st.caption() text: single flat solid color, square corners — a gradient
-   made from sky-toned blues just blended into the cloud photo behind it,
-   so this needs to be an unmistakably solid, more saturated block instead */
 [data-testid="stCaptionContainer"] {
     display: block;
     width: 100%;
@@ -476,8 +447,6 @@ p, .stMarkdown p, li, .stMarkdown li {
     font-weight: 700;
 }
 
-/* ...except inside the sidebar, where it clashed badly with the violet
-   panel — restore plain, unboxed text there */
 section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
     display: block;
     background: transparent !important;
@@ -594,14 +563,6 @@ div[data-testid="stVerticalBlockBorderWrapper"]:hover {
     transform: translateY(-3px);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 12px 24px -8px rgba(40,25,110,0.35);
 }
-
-/* ---- Individual scenery per input card (Personal / Eating / Lifestyle) ----
-   Each st.container(border=True, key=...) call gets a stable `st-key-...`
-   class straight from Streamlit, so we target that directly instead of a
-   fragile sibling-selector guess at the internal DOM structure. The class
-   lands on a wrapper that CONTAINS stVerticalBlockBorderWrapper, so we
-   style both that wrapper itself and the inner one, and force an opaque
-   fill so the page backdrop can't show through underneath. */
 
 .st-key-personal_card,
 .st-key-personal_card > div[data-testid="stVerticalBlockBorderWrapper"] {
@@ -894,11 +855,7 @@ def render_comparison_charts(df: pd.DataFrame):
     def bar_chart_for(metric: str):
         y_scale = alt.Scale(zero=False)
         x_scale = alt.Scale(domain=models_present)
-
-        # Vega-Lite only allows a gradient as a literal per-mark fill value,
-        # not inside a scale's `range` array — so instead of one bar mark
-        # colored by a category scale, we layer one bar mark PER model, each
-        # with its own flat metallic-gradient fill applied directly.
+        
         bar_layers = [
             alt.Chart(df[df["Model"] == m]).mark_bar(
                 clip=False, cornerRadiusTopLeft=8, cornerRadiusTopRight=8,
@@ -1162,17 +1119,10 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
         "MTRANS": mtrans,
     }
 
-    # Signature of everything the results section depends on (model inputs +
-    # height/weight for the BMI card), so we can tell "user just changed
-    # something" apart from "user just clicked Predict" or "switched which
-    # model's tab they're viewing".
     current_signature = {**inputs, "height_m": height_m, "weight_kg": weight_kg}
 
     if (st.session_state.get("show_prediction")
             and st.session_state.get("last_predicted_signature") != current_signature):
-        # An input changed since the last prediction — hide the stale result
-        # immediately rather than leaving it on screen (or silently updating
-        # it) until the user clicks Predict again.
         st.session_state["show_prediction"] = False
 
     st.divider()
@@ -1251,13 +1201,6 @@ def render_predict_page(model_choice, rf_model, knn_model, svm_model, ann_model,
             x_scale = alt.Scale(domain=categories)
 
             # 2. Use Altair for the chart to force the categorical order and use custom colors.
-            #    Bar height comes from "Probability" (which animate_bar_growth scales
-            #    from 0 up to the real value frame by frame); text/tooltip read from
-            #    "Probability_final" so the printed numbers don't flicker mid-animation.
-            #    Vega-Lite only allows a gradient as a literal per-mark fill value, not
-            #    inside a scale's `range` array, so each category gets its own layer
-            #    with a flat metallic-gradient fill applied directly instead of one bar
-            #    mark colored through a shared category scale.
             def build_proba_chart(frame_df):
                 y_scale = alt.Scale(domain=[0, 1.08])
 
